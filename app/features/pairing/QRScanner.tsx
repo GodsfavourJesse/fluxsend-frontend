@@ -12,27 +12,30 @@ export function QRScanner({ onScan }: { onScan: (v: string) => void }) {
         scannerRef.current = scanner;
 
         scanner
-        .start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: 220 },
-            (text) => {
-                if (!startedRef.current) return;
-                onScan(text);
-            }
-        )
-        .then(() => {
-            startedRef.current = true;
-        })
-        .catch(() => {});
+            .start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: 220 },
+                (text) => {
+                    if (!startedRef.current) return;
+                    onScan(text);
+                },
+                (errorMessage) => {
+                    // This is required for the latest version. Do nothing on error.
+                }
+            )
+            .then(() => {
+                startedRef.current = true;
+            })
+            .catch(() => {});
 
         return () => {
             if (scannerRef.current && startedRef.current) {
                 scannerRef.current
-                .stop()
-                .catch(() => {})
-                .finally(() => {
-                    startedRef.current = false;
-                });
+                    .stop()
+                    .catch(() => {})
+                    .finally(() => {
+                        startedRef.current = false;
+                    });
             }
         };
     }, []);
