@@ -1,20 +1,16 @@
 "use client";
 
-import { FC } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 type Props = {
-  roomId: string;
-  size?: number;
+    roomId: string;
+    size?: number;
 };
 
-export const QRCodeDisplay: FC<Props> = ({ roomId, size = 160 }) => {
-    // Encode the room ID as a simple URL or string
-    const qrValue = `fluxsend://join/${roomId}`;
-
+export function QRCodeDisplay({ roomId, size = 180 }: Props) {
     return (
-        <div className="flex justify-center p-4 bg-white rounded-2xl shadow-md">
-            <QRCodeCanvas value={qrValue} size={size} />
+        <div className="flex justify-center rounded-2xl bg-white p-6 shadow-sm">
+            <QRCodeCanvas value={`fluxsend://join/${roomId}`} size={size} />
         </div>
     );
-};
+}
