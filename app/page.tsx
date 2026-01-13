@@ -10,6 +10,8 @@ import { QRCodeDisplay } from "./features/pairing/QRCodeDisplay";
 import { PairDeviceModal } from "./features/modals/PairDeviceModal";
 import { getDeviceName } from "./utils/getDeviceName";
 import { RefreshCcw, X } from "lucide-react";
+import { ConnectingIndicator } from "./features/pairing/ConnectingIndicator";
+import { ConnectionSuccess } from "./features/pairing/ConnectionSuccess";
 
 type PairState = "idle" | "waiting" | "connecting" | "connected";
 
@@ -18,18 +20,21 @@ export default function Home() {
     const [roomId, setRoomId] = useState<string | null>(null);
     const [peerName, setPeerName] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isHost, setIsHost] = useState(false);
 
     const socket = useSocket((message) => {
         switch (message.type) {
             case "room-created":
                 setRoomId(message.roomId);
                 setPairState("waiting");
+                setIsHost(true); // mark user as host
                 break;
-
+                
+                
             case "joining":
                 setPairState("connecting");
                 break;
-
+                    
             case "peer-connected":
                 setPeerName(message.peerName);
                 setPairState("connected");
@@ -40,7 +45,7 @@ export default function Home() {
 
     const createRoom = () => {
         if (!socket.ready) {
-            console.warn("Socket not ready yet");
+            // console.warn("Socket not ready yet");
             return;
         }
         
@@ -52,12 +57,15 @@ export default function Home() {
 
     const refreshRoom = () => {
         setRoomId(null);
+        setPairState("idle");
+        setIsHost(false);
         createRoom();
     }
 
     const cancelWaiting = () => {
         setRoomId(null);
         setPairState("idle");
+        setIsHost(false);
     }
 
     return (
@@ -133,7 +141,7 @@ export default function Home() {
                                 >
                                     <div className="space-y-1 text-center">
                                         <p className="text-sm text-neutral-500">
-                                            Waiting for another device
+                                            Waiting for another device...
                                         </p>
                                         <div className="text-2xl font-mono tracking-widest text-[#0B0F1A]">
                                             {roomId}
@@ -180,57 +188,12 @@ export default function Home() {
 
                             {/* CONNECTING */}
                             {pairState === "connecting" && (
-                                <motion.div
-                                    key="connecting"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="flex flex-col items-center gap-5 py-6"
-                                >
-                                    <motion.div
-                                        className="relative h-14 w-14 rounded-full border-2 border-blue-200"
-                                        animate={{ rotate: 360 }}
-                                        transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
-                                    >
-                                        <div className="absolute inset-1 rounded-full bg-blue-500/10" />
-                                    </motion.div>
-
-                                    <div className="text-center space-y-1">
-                                        <p className="text-sm font-medium text-[#0B0F1A]">
-                                            Connecting…
-                                        </p>
-                                        <p className="text-xs text-neutral-500">
-                                            Establishing secure connection
-                                        </p>
-                                    </div>
-                                </motion.div>
+                                <ConnectingIndicator peer={peerName || undefined} />
                             )}
 
                             {/* CONNECTED */}
                             {pairState === "connected" && peerName && (
-                                <motion.div
-                                    key="connected"
-                                    initial={{ opacity: 0, scale: 0.96 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ duration: 0.4, ease: "easeOut" }}
-                                    className="text-center space-y-3 py-4"
-                                >
-                                    <motion.div
-                                        initial={{ scale: 0.8 }}
-                                        animate={{ scale: 1 }}
-                                        transition={{ type: "spring", stiffness: 260 }}
-                                        className="mx-auto h-14 w-14 rounded-full bg-green-100 flex items-center justify-center"
-                                    >
-                                        <span className="text-green-600 text-xl">✓</span>
-                                    </motion.div>
-
-                                    <p className="text-green-600 font-medium">
-                                        Connected successfully
-                                    </p>
-                                    <p className="text-sm text-neutral-600">
-                                        Connected to <span className="font-medium">{peerName}</span>
-                                    </p>
-                                </motion.div>
+                                <ConnectionSuccess peer={peerName} />
                             )}
                         </AnimatePresence>
                     </motion.div>
