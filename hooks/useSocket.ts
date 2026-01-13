@@ -8,6 +8,10 @@ export function useSocket(onMessage: (data: any) => void) {
 
     const WS_URL = process.env.NEXT_PUBLIC_WS_URL!;
 
+    if (!WS_URL) {
+        throw new Error("NEXT_PUBLIC_WS_URL is not defined");
+    }
+
     function connect() {
         if (socketRef.current) return;
 
