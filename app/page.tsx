@@ -9,6 +9,7 @@ import { Branding } from "./components/Branding";
 import { QRCodeDisplay } from "./features/pairing/QRCodeDisplay";
 import { PairDeviceModal } from "./features/modals/PairDeviceModal";
 import { getDeviceName } from "./utils/getDeviceName";
+import { RefreshCcw, X } from "lucide-react";
 
 type PairState = "idle" | "waiting" | "connecting" | "connected";
 
@@ -36,11 +37,13 @@ export default function Home() {
         }
     });
 
-    useEffect(() => {
-        socket.connect();
-    }, []);
 
     const createRoom = () => {
+        if (!socket.ready) {
+            console.warn("Socket not ready yet");
+            return;
+        }
+        
         socket.send({
             type: "create-room",
             deviceName: getDeviceName(),
@@ -160,16 +163,16 @@ export default function Home() {
                                     {/* Refresh & Close buttons */}
                                     <div className="flex justify-center gap-4 mt-2">
                                         <Button
-                                            className="h-10 px-4 rounded-xl bg-blue-500 hover:bg-blue-700 text-white cursor-pointer"
+                                            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-blue-500 hover:bg-blue-700 text-white cursor-pointer transition-colors"
                                             onClick={refreshRoom}
                                         >
-                                            Refresh
+                                           <RefreshCcw size={16} /> Refresh 
                                         </Button>
                                         <Button
-                                            className="h-10 px-4 rounded-xl bg-red-500 text-neutral-700 hover:bg-red-700 cursor-pointer"
+                                            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-red-500 text-neutral-700 hover:bg-red-700 cursor-pointer transition-colors"
                                             onClick={cancelWaiting}
                                         >
-                                            Close
+                                           <X size={16} /> Close 
                                         </Button>
                                     </div>
                                 </motion.div>
