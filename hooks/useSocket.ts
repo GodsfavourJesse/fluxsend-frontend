@@ -6,13 +6,14 @@ export function useSocket(onMessage: (data: any) => void) {
     const heartbeatTimer = useRef<NodeJS.Timeout | null>(null);
     const [ready, setReady] = useState(false);
 
-    const WS_URL = process.env.NEXT_PUBLIC_WS_URL!;
-
-    if (!WS_URL) {
-        throw new Error("NEXT_PUBLIC_WS_URL is not defined");
-    }
+    const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 
     function connect() {
+        if (!WS_URL) {
+            console.error("WebSocket URL is not defined");
+            return;
+        }
+
         if (socketRef.current) return;
 
         console.log("COnnecting to WebSocket...");
