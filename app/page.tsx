@@ -64,13 +64,16 @@ export default function Home() {
     });
 
     // If socket disconnects unexpectedly
-    // useEffect(() => {
-    //     if (!socket.ready) {
-    //         if (pairState === "connected" || pairState === "waiting") {
-    //             setPairState("disconnected");
-    //         }
-    //     }
-    // }, [socket.ready]);
+    useEffect(() => {
+        if (!socket.ready && pairState === "connected") {
+            const timeout = setTimeout(() => {
+                setPairState("disconnected");
+            }, 20000); // 20s grace period
+
+            return () => clearTimeout(timeout);
+        }
+    }, [socket.ready, pairState]);
+
 
     const resetPairingState = () => {
         setPairState("idle");
@@ -103,7 +106,6 @@ export default function Home() {
             resetPairingState();
             createRoom();
         } else {
-            setIsModalOpen(true);
             setIsModalOpen(true);
         }
     }
@@ -233,10 +235,6 @@ export default function Home() {
                                     handshakeDuration={15000}
                                     disconnected={pairState === "disconnected"}
                                     onRetry={retryConnection}
-                                    onComplete={() => {
-                                        if (pairState === "connected") return; 
-                                        resetPairingState();
-                                    }}
                                 />
                             )}
 
