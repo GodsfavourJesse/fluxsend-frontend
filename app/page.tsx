@@ -12,6 +12,7 @@ import { getDeviceName } from "./utils/getDeviceName";
 import { RefreshCcw, X } from "lucide-react";
 import { ConnectingIndicator } from "./features/pairing/ConnectingIndicator";
 import { ConnectionSuccess } from "./features/pairing/ConnectionSuccess";
+import toast, { Toaster } from "react-hot-toast";
 
 type PairState = "idle" | "waiting" | "connecting" | "connected";
 
@@ -42,21 +43,22 @@ export default function Home() {
             case "connection-established":
                 setPeerName(message.peerName);
                 setPairState("connected");
+                toast.success(`Connection established with ${message.peerName}`);
                 break;
             
             case "error":
                 console.error(message.message);
                 setPairState("idle");
+                setRoomId(null);
+                setPeerName(null);
+                setIsHost(false);
                 break;
         }
     });
 
 
     const createRoom = () => {
-        if (!socket.ready) {
-            // console.warn("Socket not ready yet");
-            return;
-        }
+        if (!socket.ready) return;
         
         socket.send({
             type: "create-room",
@@ -68,6 +70,7 @@ export default function Home() {
         setRoomId(null);
         setPairState("idle");
         setIsHost(false);
+        setPeerName(null);
         createRoom();
     }
 
@@ -75,6 +78,7 @@ export default function Home() {
         setRoomId(null);
         setPairState("idle");
         setIsHost(false);
+        setPeerName(null);
     }
 
     return (
@@ -197,7 +201,11 @@ export default function Home() {
 
                             {/* CONNECTING */}
                             {pairState === "connecting" && (
-                                <ConnectingIndicator peer={peerName || undefined} />
+                                <ConnectingIndicator 
+                                    peer={peerName || undefined} 
+                                    handshakeDuration={1300}
+                                    onComplete={() => setPairState("connected")}
+                                />
                             )}
 
                             {/* CONNECTED */}
@@ -223,6 +231,8 @@ export default function Home() {
                     setIsModalOpen(false);
                 }}
             />
+
+            <Toaster position="top-center" />
         </main>
     );
 }

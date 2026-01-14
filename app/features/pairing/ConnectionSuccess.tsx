@@ -2,15 +2,24 @@
 
 import { motion } from "framer-motion";
 
-export function ConnectionSuccess({ peer }: { peer: string }) {
+type ConnectionSuccessProps = {
+    peer: string;
+    duration?: number; // optional fade-in duration
+};
+
+export function ConnectionSuccess({
+    peer,
+    duration = 0.4,
+}: ConnectionSuccessProps) {
     return (
         <motion.div
             key="connected"
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            transition={{ duration, ease: "easeOut" }}
             className="text-center space-y-3 py-4"
         >
+            {/* Success Icon */}
             <motion.div
                 initial={{ scale: 0.8 }}
                 animate={{ scale: 1 }}
