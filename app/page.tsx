@@ -50,10 +50,11 @@ export default function Home() {
                 break;
             
             case "peer-disconnected":
-                toast.error("Connection lost");
+                toast.dismiss();
+                toast.error("Peer disconnected");
                 setPairState("disconnected");
                 break;
-                    
+
             case "error":
                 toast.dismiss();
                 toast.error(message.message);
@@ -63,13 +64,13 @@ export default function Home() {
     });
 
     // If socket disconnects unexpectedly
-    useEffect(() => {
-        if (!socket.ready) {
-            if (pairState !== "idle" && pairState !== "connected") {
-                setPairState("disconnected");
-            }
-        }
-    }, [socket.ready]);
+    // useEffect(() => {
+    //     if (!socket.ready) {
+    //         if (pairState === "connected" || pairState === "waiting") {
+    //             setPairState("disconnected");
+    //         }
+    //     }
+    // }, [socket.ready]);
 
     const resetPairingState = () => {
         setPairState("idle");
@@ -97,10 +98,12 @@ export default function Home() {
     }
 
     const retryConnection = () => {
-        resetPairingState();
+        toast.dismiss();
         if (isHost) {
+            resetPairingState();
             createRoom();
         } else {
+            setIsModalOpen(true);
             setIsModalOpen(true);
         }
     }
@@ -227,12 +230,12 @@ export default function Home() {
                             {(pairState === "connecting" || pairState === "disconnected") && (
                                 <ConnectingIndicator 
                                     peer={peerName || undefined} 
-                                    handshakeDuration={1300}
+                                    handshakeDuration={15000}
                                     disconnected={pairState === "disconnected"}
                                     onRetry={retryConnection}
                                     onComplete={() => {
-                                        if (peerName) setPairState("connected");
-                                        else resetPairingState();
+                                        if (pairState === "connected") return; 
+                                        resetPairingState();
                                     }}
                                 />
                             )}

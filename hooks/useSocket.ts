@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 export function useSocket(onMessage: (data: any) => void) {
     const socketRef = useRef<WebSocket | null>(null);
     const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
-    const lastPong = useRef(Date.now());
     const [ready, setReady] = useState(false);
 
     const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000";
@@ -24,11 +23,6 @@ export function useSocket(onMessage: (data: any) => void) {
 
                 if (data.type === "ping") {
                     ws.send(JSON.stringify({ type: "pong" }));
-                    return;
-                }
-
-                if (data.type === "pong") {
-                    lastPong.current = Date.now();
                     return;
                 }
 
