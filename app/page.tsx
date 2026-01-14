@@ -49,6 +49,11 @@ export default function Home() {
                 toast.success(`Connection established with ${message.peerName}`);
                 break;
             
+            case "peer-disconnected":
+                toast.error("Connection lost");
+                setPairState("disconnected");
+                break;
+                    
             case "error":
                 toast.dismiss();
                 toast.error(message.message);
@@ -219,7 +224,7 @@ export default function Home() {
                             )}
 
                             {/* CONNECTING */}
-                            {pairState === "connecting" || pairState === "disconnected" && (
+                            {(pairState === "connecting" || pairState === "disconnected") && (
                                 <ConnectingIndicator 
                                     peer={peerName || undefined} 
                                     handshakeDuration={1300}
