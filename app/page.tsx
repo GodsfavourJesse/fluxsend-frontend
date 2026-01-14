@@ -14,7 +14,7 @@ import { ConnectingIndicator } from "./features/pairing/ConnectingIndicator";
 import { ConnectionSuccess } from "./features/pairing/ConnectionSuccess";
 import toast, { Toaster } from "react-hot-toast";
 
-type PairState = "idle" | "waiting" | "connecting" | "connected";
+type PairState = "idle" | "waiting" | "connecting" | "connected" | "disconnected";
 
 export default function Home() {
     const [pairState, setPairState] = useState<PairState>("idle");
@@ -31,31 +31,47 @@ export default function Home() {
                 setRoomId(message.roomId);
                 setPairState("waiting");
                 setIsHost(true); // mark user as host
+                toast.success("Room created. Waiting for a device...");
                 break;
                 
             // HOST sees guest connecting
             case "peer-joining":
                 setPeerName(message.peerName);
                 setPairState("connecting");
+                toast.loading(`Connecting to ${message.peerName}...`);
                 break;
             
             // BOTH host & guest reciver this
             case "connection-established":
                 setPeerName(message.peerName);
                 setPairState("connected");
+                toast.dismiss();
                 toast.success(`Connection established with ${message.peerName}`);
                 break;
             
             case "error":
-                console.error(message.message);
-                setPairState("idle");
-                setRoomId(null);
-                setPeerName(null);
-                setIsHost(false);
+                toast.dismiss();
+                toast.error(message.message);
+                resetPairingState();
                 break;
         }
     });
 
+    // If socket disconnects unexpectedly
+    useEffect(() => {
+        if (!socket.ready) {
+            if (pairState !== "idle" && pairState !== "connected") {
+                setPairState("disconnected");
+            }
+        }
+    }, [socket.ready]);
+
+    const resetPairingState = () => {
+        setPairState("idle");
+        setRoomId(null);
+        setPeerName(null);
+        setIsHost(false);
+    }
 
     const createRoom = () => {
         if (!socket.ready) return;
@@ -67,18 +83,21 @@ export default function Home() {
     };
 
     const refreshRoom = () => {
-        setRoomId(null);
-        setPairState("idle");
-        setIsHost(false);
-        setPeerName(null);
+        resetPairingState();
         createRoom();
     }
 
     const cancelWaiting = () => {
-        setRoomId(null);
-        setPairState("idle");
-        setIsHost(false);
-        setPeerName(null);
+        resetPairingState();
+    }
+
+    const retryConnection = () => {
+        resetPairingState();
+        if (isHost) {
+            createRoom();
+        } else {
+            setIsModalOpen(true);
+        }
     }
 
     return (
@@ -200,17 +219,26 @@ export default function Home() {
                             )}
 
                             {/* CONNECTING */}
-                            {pairState === "connecting" && (
+                            {pairState === "connecting" || pairState === "disconnected" && (
                                 <ConnectingIndicator 
                                     peer={peerName || undefined} 
                                     handshakeDuration={1300}
-                                    onComplete={() => setPairState("connected")}
+                                    disconnected={pairState === "disconnected"}
+                                    onRetry={retryConnection}
+                                    onComplete={() => {
+                                        if (peerName) setPairState("connected");
+                                        else resetPairingState();
+                                    }}
                                 />
                             )}
 
                             {/* CONNECTED */}
                             {pairState === "connected" && peerName && (
-                                <ConnectionSuccess peer={peerName} />
+                                <ConnectionSuccess 
+                                    peer={peerName}
+                                    disconnected={false}
+                                    onRetry={retryConnection}
+                                 />
                             )}
                         </AnimatePresence>
                     </motion.div>
@@ -222,6 +250,7 @@ export default function Home() {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onJoinRoom={(code) => {
+                    if (!socket.ready) return;
                     socket.send({
                         type: "join-room",
                         roomId: code,
