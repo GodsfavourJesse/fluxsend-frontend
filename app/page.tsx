@@ -24,20 +24,29 @@ export default function Home() {
 
     const socket = useSocket((message) => {
         switch (message.type) {
+
+            // HOST creates room
             case "room-created":
                 setRoomId(message.roomId);
                 setPairState("waiting");
                 setIsHost(true); // mark user as host
                 break;
                 
-                
-            case "joining":
+            // HOST sees guest connecting
+            case "peer-joining":
+                setPeerName(message.peerName);
                 setPairState("connecting");
                 break;
-                    
-            case "peer-connected":
+            
+            // BOTH host & guest reciver this
+            case "connection-established":
                 setPeerName(message.peerName);
                 setPairState("connected");
+                break;
+            
+            case "error":
+                console.error(message.message);
+                setPairState("idle");
                 break;
         }
     });

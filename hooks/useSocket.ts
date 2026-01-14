@@ -9,20 +9,12 @@ export function useSocket(onMessage: (data: any) => void) {
     const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000";
 
     function connect() {
-        if (!WS_URL) {
-            console.error("WebSocket URL is not defined");
-            return;
-        }
-
-        if (socketRef.current) return;
-
-        console.log("COnnecting to WebSocket...");
+        if (!WS_URL || socketRef.current) return;
 
         const ws = new WebSocket(WS_URL);
 
         ws.onopen = () => {
             setReady(true);
-            console.log("Websocket connected");
 
             heartbeatTimer.current = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
@@ -32,14 +24,14 @@ export function useSocket(onMessage: (data: any) => void) {
         };
 
         ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            // console.log("WS message:", data);
-            onMessage(data);
+            try {
+                const data = JSON.parse(e.data);
+                onMessage(data);
+            } catch {}
         };
 
         ws.onclose = () => {
             setReady(false);
-            // console.warn("Websocket closed, retrying...")
             clearInterval(heartbeatTimer.current!);
             socketRef.current = null;
             reconnectTimer.current = setTimeout(connect, 3000);
@@ -52,7 +44,6 @@ export function useSocket(onMessage: (data: any) => void) {
 
     function send(data: any) {
         if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-            console.warn("WS not ready, message skipped:", data);
             return;
         }
         socketRef.current.send(JSON.stringify(data));
@@ -60,9 +51,7 @@ export function useSocket(onMessage: (data: any) => void) {
 
     useEffect(() => {
         connect();
-        return () => {
-            socketRef.current?.close();
-        };
+        return () => socketRef.current?.close();
     }, []);
 
     return { send, ready };
