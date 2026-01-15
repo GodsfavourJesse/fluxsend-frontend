@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 type ConnectionSuccessProps = {
     peer: string;
@@ -15,6 +16,9 @@ export function ConnectionSuccess({
     disconnected = false,
     duration = 0.4,
 }: ConnectionSuccessProps) {
+
+    const router = useRouter();
+
     return (
         <motion.div
             key={disconnected ? "disconnected" : "connected"}
@@ -45,6 +49,14 @@ export function ConnectionSuccess({
                     <p className="text-sm text-neutral-600">
                         Connected to <span className="font-medium">{peer}</span>
                     </p>
+
+                    {/* New Button for sharing */}
+                    <button
+                        onClick={() => router.push("/share")}
+                        className="mt-3 px-6 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition"
+                    >
+                        Start Sharing
+                    </button>
                 </>
             )}
         </motion.div>

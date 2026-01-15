@@ -11,6 +11,7 @@ export function useSocket(onMessage: (data: any) => void) {
         if (!WS_URL || socketRef.current) return;
 
         const ws = new WebSocket(WS_URL);
+        ws.binaryType = "arraybuffer";
         socketRef.current = ws;
 
         ws.onopen = () => {
@@ -18,6 +19,16 @@ export function useSocket(onMessage: (data: any) => void) {
         };
 
         ws.onmessage = (e) => {
+            // Binary data (file chunks)
+            if (e.data instanceof ArrayBuffer) {
+                onMessage({
+                    type: "binary-chunk",
+                    payload: e.data
+                });
+                return;
+            }
+
+            // JSON messages
             try {
                 const data = JSON.parse(e.data);
 
@@ -27,7 +38,9 @@ export function useSocket(onMessage: (data: any) => void) {
                 }
 
                 onMessage(data);
-            } catch {}
+            } catch {
+                console.warn("Invalid WS message");
+            }
         };
 
         ws.onclose = () => {
@@ -44,7 +57,14 @@ export function useSocket(onMessage: (data: any) => void) {
             socketRef.current.send(JSON.stringify(data));
         }
     };
-
+    
+    // Binary send (for file chunks)
+    const sendBinary = (buffer: ArrayBuffer) => {
+        if (socketRef.current?.readyState === WebSocket.OPEN) {
+            socketRef.current.send(buffer);
+        }
+    }
+    
     useEffect(() => {
         connect();
         return () => {
@@ -53,5 +73,5 @@ export function useSocket(onMessage: (data: any) => void) {
         };
     }, []);
 
-    return { send, ready };
+    return { send, sendBinary, ready };
 }
