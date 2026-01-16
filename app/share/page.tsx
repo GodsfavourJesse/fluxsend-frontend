@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { X, Eye, Upload } from "lucide-react";
 import { useSocket } from "@/hooks/useSocket";
 import { sendFile } from "@/lib/sendFile";
+import { offerFile } from "@/lib/offerFile";
 import PreviewModal from "../features/transfer/PreviewModal";
 import TransferModal from "../features/transfer/TransferModal";
 import { Branding } from "../components/Branding";
@@ -21,8 +22,13 @@ export default function SenderPage() {
     const [previewFile, setPreviewFile] = useState<SelectedFile | null>(null);
     const [sending, setSending] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
+    const acceptedFiles = useRef<Set<string>>(new Set());
 
-    const socket = useSocket(() => {}); // ready to send
+    const socket = useSocket((msg) => {
+        if (msg?.type === "file-accept") {
+            acceptedFiles.current.add(msg.fileId);
+        }
+    }); // ready to send
 
     const handleSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
@@ -46,29 +52,53 @@ export default function SenderPage() {
 
     const startSending = async () => {
         if (!socket.ready || sending) return;
+
         setSending(true);
         setShowTransferModal(true);
 
         for (const item of files) {
             if (item.status !== "pending") continue;
 
-            setFiles((prev) =>
-                prev.map((f) => (f.id === item.id ? { ...f, status: "sending" } : f))
-            );
+            // 1️⃣ Send file offer
+            const fileId = offerFile(item.file, socket.send);
 
-            await sendFile(item.file, item.id, socket.send, (p) =>
-                setFiles((prev) =>
-                prev.map((f) => (f.id === item.id ? { ...f, progress: p } : f))
+            // 2️⃣ Mark UI as waiting
+            setFiles((prev) =>
+                prev.map((f) =>
+                    f.id === item.id ? { ...f, status: "sending" } : f
                 )
             );
 
+            // 3️⃣ WAIT until receiver accepts
+            while (!acceptedFiles.current.has(fileId)) {
+                await new Promise((r) => setTimeout(r, 200));
+            }
+
+            // 4️⃣ Start actual transfer
+            await sendFile(
+                item.file,
+                fileId,
+                socket.send,
+                socket.sendBinary,
+                (p) =>
+                    setFiles((prev) =>
+                        prev.map((f) =>
+                            f.id === item.id ? { ...f, progress: p } : f
+                        )
+                    )
+            );
+
+            // 5️⃣ Mark as done
             setFiles((prev) =>
-                prev.map((f) => (f.id === item.id ? { ...f, status: "done" } : f))
+                prev.map((f) =>
+                    f.id === item.id ? { ...f, status: "done" } : f
+                )
             );
         }
 
         setSending(false);
     };
+
 
     const overallProgress =
         files.length === 0 ? 0 : Math.floor(files.reduce((a, b) => a + b.progress, 0) / files.length);

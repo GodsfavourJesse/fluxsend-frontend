@@ -21,10 +21,7 @@ export function useSocket(onMessage: (data: any) => void) {
         ws.onmessage = (e) => {
             // Binary data (file chunks)
             if (e.data instanceof ArrayBuffer) {
-                onMessage({
-                    type: "binary-chunk",
-                    payload: e.data
-                });
+                onMessage(e.data); //pass raw buffer
                 return;
             }
 
