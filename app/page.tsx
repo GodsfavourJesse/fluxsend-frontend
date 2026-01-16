@@ -22,6 +22,7 @@ export default function Home() {
     const [peerName, setPeerName] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isHost, setIsHost] = useState(false);
+    const [roomToken, setRoomToken] = useState<string | null>(null);
 
     const socket = useSocket((message) => {
         switch (message.type) {
@@ -29,6 +30,7 @@ export default function Home() {
             // HOST creates room
             case "room-created":
                 setRoomId(message.roomId);
+                setRoomToken(message.token);
                 setPairState("waiting");
                 setIsHost(true); // mark user as host
                 toast.success("Room created. Waiting for a device...");
@@ -202,7 +204,7 @@ export default function Home() {
 
                                         {/* QR Code ON TOP (sharp & scannable) */}
                                         <div className="relative z-10 bg-white p-3 rounded-2xl shadow-md">
-                                            <QRCodeDisplay roomId={roomId} size={200} />
+                                            <QRCodeDisplay roomId={`${roomId}:${roomToken}`} size={200} />
                                         </div>
                                     </div>
 
@@ -255,11 +257,20 @@ export default function Home() {
             <PairDeviceModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onJoinRoom={(code) => {
+                onJoinRoom={(rawCode) => {
                     if (!socket.ready) return;
+                    
+                    const [roomId, token] = rawCode.split(":");
+
+                    if (!roomId || !token) {
+                        toast.error("Invalid pairing code");
+                        return;
+                    }
+
                     socket.send({
                         type: "join-room",
-                        roomId: code,
+                        roomId,
+                        token,
                         deviceName: getDeviceName(),
                     });
                     setPairState("connecting");
