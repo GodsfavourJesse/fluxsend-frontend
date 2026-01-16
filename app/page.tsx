@@ -257,15 +257,8 @@ export default function Home() {
             <PairDeviceModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onJoinRoom={(rawCode) => {
+                onJoinRoom={({ roomId, token }) => {
                     if (!socket.ready) return;
-                    
-                    const [roomId, token] = rawCode.split(":");
-
-                    if (!roomId || !token) {
-                        toast.error("Invalid pairing code");
-                        return;
-                    }
 
                     socket.send({
                         type: "join-room",
@@ -273,6 +266,7 @@ export default function Home() {
                         token,
                         deviceName: getDeviceName(),
                     });
+
                     setPairState("connecting");
                     setIsModalOpen(false);
                 }}

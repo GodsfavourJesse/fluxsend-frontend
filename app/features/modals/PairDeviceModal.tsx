@@ -11,7 +11,7 @@ import ScannerFrame from "../pairing/ScannerFrame";
 type Props = {
     isOpen: boolean;
     onClose: () => void;
-    onJoinRoom: (code: string) => void;
+    onJoinRoom: (data: {roomId: string; token: string}) => void;
 };
 
 export function PairDeviceModal({ isOpen, onClose, onJoinRoom }: Props) {
@@ -130,7 +130,11 @@ export function PairDeviceModal({ isOpen, onClose, onJoinRoom }: Props) {
                                                 shadow-md hover:shadow-lg
                                                 transition-all cursor-pointer
                                             "
-                                            onClick={() => onJoinRoom(manualCode)}
+                                            onClick={() => {
+                                                const parsed = parsePairingCode(manualCode);
+                                                if (!parsed) return;
+                                                onJoinRoom(parsed);
+                                            }}
                                         >
                                             Connect device
                                         </Button>
