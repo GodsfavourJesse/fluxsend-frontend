@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
 import { useFileReceiver } from "@/hooks/useFileReceiver";
-import { X, Download, CheckCircle } from "lucide-react";
 import { Branding } from "../components/Branding";
+import { X, Download, CheckCircle } from "lucide-react";
 
 /* ================= FILE OFFER TOAST ================= */
 function FileOfferToast({
@@ -81,10 +81,20 @@ function ReceiveProgressModal({
 
 /* ================= MAIN RECEIVER PAGE ================= */
 export default function ReceiverPage() {
+    const socket = useSocket();
+    const receiver = useFileReceiver();
     const [showProgress, setShowProgress] = useState(false);
 
-    const receiver = useFileReceiver((data) => socket?.send(data));
-    const socket = useSocket(receiver.handleMessage);
+    useEffect(() => {
+        if (!socket.ready) return;
+
+        socket.setOnMessage(receiver.handleMessage);
+        receiver.setSender(socket.send);
+
+        return () => {
+            receiver.reset();
+        };
+    }, [socket.ready]);
 
     /* Show progress modal only when receiving */
     useEffect(() => {

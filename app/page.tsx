@@ -1,88 +1,95 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "@/hooks/useSocket";
 import { Button } from "./components/Button";
 import { Container } from "./components/Container";
 import { Branding } from "./components/Branding";
 import { QRCodeDisplay } from "./features/pairing/QRCodeDisplay";
-import { PairDeviceModal } from "./features/modals/PairDeviceModal";
+import { PairDeviceModal } from "./features/modals/pairmodals/PairDeviceModal";
 import { getDeviceName } from "./utils/getDeviceName";
 import { RefreshCcw, X } from "lucide-react";
 import { ConnectingIndicator } from "./features/pairing/ConnectingIndicator";
-import { ConnectionSuccess } from "./features/pairing/ConnectionSuccess";
+import ConnectedActionChooser from "./features/pairing/ConnectedActionChooser";
+import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
+import { parsePairingCode } from "./utils/parsePairingCode";
+import { useFileReceiver } from "@/hooks/useFileReceiver";
 
 type PairState = "idle" | "waiting" | "connecting" | "connected" | "disconnected";
 
 export default function Home() {
+    const router = useRouter();
     const [pairState, setPairState] = useState<PairState>("idle");
     const [roomId, setRoomId] = useState<string | null>(null);
     const [peerName, setPeerName] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isHost, setIsHost] = useState(false);
     const [roomToken, setRoomToken] = useState<string | null>(null);
-
-    const socket = useSocket((message) => {
-        switch (message.type) {
-
-            // HOST creates room
-            case "room-created":
-                setRoomId(message.roomId);
-                setRoomToken(message.token);
-                setPairState("waiting");
-                setIsHost(true); // mark user as host
-                toast.success("Room created. Waiting for a device...");
-                break;
-                
-            // HOST sees guest connecting
-            case "peer-joining":
-                setPeerName(message.peerName);
-                setPairState("connecting");
-                toast.loading(`Connecting to ${message.peerName}...`);
-                break;
-            
-            // BOTH host & guest reciver this
-            case "connection-established":
-                setPeerName(message.peerName);
-                setPairState("connected");
-                toast.dismiss();
-                toast.success(`Connection established with ${message.peerName}`);
-                break;
-            
-            case "peer-disconnected":
-                toast.dismiss();
-                toast.error("Peer disconnected");
-                setPairState("disconnected");
-                break;
-
-            case "error":
-                toast.dismiss();
-                toast.error(message.message);
-                resetPairingState();
-                break;
-        }
-    });
-
-    // If socket disconnects unexpectedly
+    const [connectedMode, setConnectedMode] = useState<null | "send" | "receive">(null);
+    
+    const socket = useSocket();
+    
+    const receiverRef = useRef<ReturnType<typeof useFileReceiver> | null>(null);
+    const receiver = useFileReceiver(socket.send);
+    receiverRef.current = receiver;
+    
     useEffect(() => {
-        if (!socket.ready && pairState === "connected") {
-            const timeout = setTimeout(() => {
-                setPairState("disconnected");
-            }, 20000); // 20s grace period
+        if (!socket.ready) return;
 
-            return () => clearTimeout(timeout);
-        }
-    }, [socket.ready, pairState]);
+        socket.setOnMessage((msg) => {
+            receiverRef.current?.handleMessage(msg);
 
+            switch (msg.type) {
+                case "room-created":
+                    setRoomId(msg.roomId);
+                    setRoomToken(msg.token);
+                    setPairState("waiting");
+                    setIsHost(true);
+                    toast.success("Room created. Waiting for a device...");
+                    break;
+                        
+                case "peer-joining":
+                    setPeerName(msg.peerName);
+                    setPairState("connecting");
+                    toast.loading(`Connecting to ${msg.peerName}...`);
+                    break;
+                            
+                case "connection-established":
+                    setPeerName(msg.peerName);
+                    setPairState("connected");
+                    setRoomToken(null);
+                    toast.dismiss();
+                    toast.success(`Connection established with ${msg.peerName}`);
+                    break;
+                    
+                case "peer-disconnected":
+                    toast.dismiss();
+                    toast.error("Peer disconnected");
+                    setPairState("disconnected");
+                    break;
+                        
+                case "error":
+                    toast.dismiss();
+                    toast.error(msg.message);
+                    resetPairingState();
+                    break;
+            }
+        });
+
+        return () => {
+            socket.setOnMessage(() => {});
+        };
+    }, [socket.ready]);
 
     const resetPairingState = () => {
         setPairState("idle");
         setRoomId(null);
         setPeerName(null);
         setIsHost(false);
-    }
+        setRoomToken(null);
+    };
 
     const createRoom = () => {
         if (!socket.ready) return;
@@ -92,16 +99,16 @@ export default function Home() {
             deviceName: getDeviceName(),
         });
     };
-
+    
     const refreshRoom = () => {
         resetPairingState();
         createRoom();
-    }
-
+    };
+    
     const cancelWaiting = () => {
         resetPairingState();
-    }
-
+    };
+    
     const retryConnection = () => {
         toast.dismiss();
         if (isHost) {
@@ -110,16 +117,66 @@ export default function Home() {
         } else {
             setIsModalOpen(true);
         }
-    }
+    };
+
+    useEffect(() => {
+        if (!receiver.incomingOffers.length) return;
+
+        const offer = receiver.incomingOffers[0];
+
+        const toastId = toast(
+            <div className="flex flex-col gap-2">
+                <span className="font-semibold">{offer.name}</span>
+                <span className="text-xs text-neutral-500">
+                    {(offer.size / (1024 * 1024)).toFixed(2)} MB
+                </span>
+                <div className="flex gap-2 mt-2">
+                    <button
+                        onClick={() => {
+                            receiver.accept(offer.fileId);
+                            toast.dismiss(toastId);
+                            router.push("/receiver");
+                        }}
+                        className="flex-1 bg-blue-600 text-white rounded-xl py-1 text-xs"
+                    >
+                        Accept
+                    </button>
+                    <button
+                        onClick={() => {
+                            receiver.reject(offer.fileId);
+                            toast.dismiss(toastId);
+                        }}
+                        className="flex-1 border border-red-500 text-red-500 rounded-xl py-1 text-xs"
+                    >
+                        Reject
+                    </button>
+                </div>
+            </div>,
+            {duration: Infinity}
+        );
+    }, [receiver.incomingOffers]);
+
+    useEffect(() => {
+        if (!socket.ready && pairState === "connected") {
+            const timeout = setTimeout(() => {
+                setPairState("disconnected");
+            }, 20000);
+
+            return () => clearTimeout(timeout);
+        }
+    }, [socket.ready, pairState]);
+
+    useEffect(() => {
+        if (connectedMode === "send") router.push("/share");
+        else if (connectedMode === "receive") router.push("/receiver");
+    }, [connectedMode]);
 
     return (
         <main className="min-h-screen bg-[#F5F7FB] flex items-center justify-center">
             <Container>
                 <div className="flex flex-col gap-14">
-                    {/* Branding */}
                     <Branding />
 
-                    {/* Value Proposition */}
                     <motion.div
                         initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -137,13 +194,11 @@ export default function Home() {
                         </p>
                     </motion.div>
 
-                    {/* Pairing Card */}
                     <motion.div
                         layout
                         className="bg-white rounded-3xl p-8 shadow-sm space-y-6"
                     >
                         <AnimatePresence mode="wait">
-                            {/* IDLE */}
                             {pairState === "idle" && (
                                 <motion.div
                                     key="idle"
@@ -173,8 +228,7 @@ export default function Home() {
                                 </motion.div>
                             )}
  
-                            {/* WAITING */}
-                            {pairState === "waiting" && roomId && (
+                            {pairState === "waiting" && roomId && roomToken && (
                                 <motion.div
                                     key="waiting"
                                     initial={{ opacity: 0, y: 12 }}
@@ -183,18 +237,30 @@ export default function Home() {
                                     transition={{ duration: 0.35 }}
                                     className="space-y-6"
                                 >
+                                    <button
+                                        onClick={() => {
+                                            if (!roomId) return;
+                                            navigator.clipboard.writeText(roomId);
+                                            toast.success("Room ID copied");
+                                        }}
+                                        className="w-full h-12 rounded-xl text-sm font-medium bg-gradient-to-br from-[#4F8CFF] via-[#3A6FE0] to-[#1F3C88] transition cursor-pointer text-white"
+                                    >
+                                        Copy room ID
+                                    </button>
+
                                     <div className="space-y-1 text-center">
                                         <p className="text-sm text-neutral-500">
-                                            Waiting for another device...
+                                            Share this room ID
                                         </p>
                                         <div className="text-2xl font-mono tracking-widest text-[#0B0F1A]">
                                             {roomId}
                                         </div>
+                                        <p className="text-xs text-neutral-400 mt-2">
+                                            Others can join by entering this code
+                                        </p>
                                     </div>
 
-                                    {/* QR Code with glow (FIXED) */}
                                     <div className="relative flex justify-center items-center">
-                                        {/* Glow BEHIND the QR */}
                                         <motion.div
                                             className="absolute rounded-full bg-blue-400/20 blur-2xl"
                                             animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0.3, 0.6] }}
@@ -202,17 +268,15 @@ export default function Home() {
                                             style={{ width: 220, height: 220 }}
                                         />
 
-                                        {/* QR Code ON TOP (sharp & scannable) */}
                                         <div className="relative z-10 bg-white p-3 rounded-2xl shadow-md">
-                                            <QRCodeDisplay roomId={`${roomId}:${roomToken}`} size={200} />
+                                            <QRCodeDisplay roomId={roomId} token={roomToken} size={200} />
                                         </div>
                                     </div>
 
                                     <p className="text-xs text-neutral-400 text-center">
-                                        Scan the QR code or enter the pairing code on the other device
+                                        Scan the QR code for instant secure pairing
                                     </p>
 
-                                    {/* Refresh & Close buttons */}
                                     <div className="flex justify-center gap-4 mt-2">
                                         <Button
                                             className="flex items-center gap-2 h-10 px-4 rounded-xl bg-blue-500 hover:bg-blue-700 text-white cursor-pointer transition-colors"
@@ -221,7 +285,7 @@ export default function Home() {
                                            <RefreshCcw size={16} /> Refresh 
                                         </Button>
                                         <Button
-                                            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-red-500 text-neutral-700 hover:bg-red-700 cursor-pointer transition-colors"
+                                            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-red-500 text-white hover:bg-red-700 cursor-pointer transition-colors"
                                             onClick={cancelWaiting}
                                         >
                                            <X size={16} /> Close 
@@ -230,7 +294,6 @@ export default function Home() {
                                 </motion.div>
                             )}
 
-                            {/* CONNECTING */}
                             {(pairState === "connecting" || pairState === "disconnected") && (
                                 <ConnectingIndicator 
                                     peer={peerName || undefined} 
@@ -240,30 +303,34 @@ export default function Home() {
                                 />
                             )}
 
-                            {/* CONNECTED */}
-                            {pairState === "connected" && peerName && (
-                                <ConnectionSuccess 
+                            {pairState === "connected" && peerName && !connectedMode && (
+                                <ConnectedActionChooser
                                     peer={peerName}
-                                    disconnected={false}
-                                    onRetry={retryConnection}
-                                 />
+                                    onSend={() => setConnectedMode("send")}
+                                    onReceive={() => setConnectedMode("receive")}
+                                />
                             )}
                         </AnimatePresence>
                     </motion.div>
                 </div>
             </Container>
 
-            {/* Modal */}
             <PairDeviceModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onJoinRoom={({ roomId, token }) => {
-                    if (!socket.ready) return;
+                onJoinRoom={(code) => {
+                    if (!socket.ready) {
+                        toast.error("Not connected to server");
+                        return;
+                    }
 
+                    toast.loading("Connecting to device...");
+
+                    // ✅ Send token only if it exists (from QR scan)
                     socket.send({
                         type: "join-room",
-                        roomId,
-                        token,
+                        roomId: code.roomId,
+                        ...(code.token && { token: code.token }),
                         deviceName: getDeviceName(),
                     });
 
