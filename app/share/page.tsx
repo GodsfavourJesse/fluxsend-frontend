@@ -315,7 +315,7 @@ export default function SenderPage() {
             <div className="grid grid-cols-4 gap-2">
                 <button
                     onClick={() => setShareMode("files")}
-                    className={`p-3 rounded-xl border-2 transition ${
+                    className={`p-3 rounded-xl border-2 transition cursor-pointer ${
                         shareMode === "files" 
                             ? "border-blue-500 bg-blue-50" 
                             : "border-neutral-200 hover:bg-neutral-50"
@@ -327,7 +327,7 @@ export default function SenderPage() {
 
                 <button
                     onClick={() => setShowTextModal(true)}
-                    className="p-3 rounded-xl border-2 border-neutral-200 hover:bg-neutral-50 transition"
+                    className="p-3 rounded-xl border-2 border-neutral-200 hover:bg-neutral-50 transition cursor-pointer"
                 >
                     <Type className="w-5 h-5 mx-auto mb-1" />
                     <span className="text-[10px] md:text-xs">Text</span>
@@ -335,7 +335,7 @@ export default function SenderPage() {
 
                 <button
                     onClick={handleClipboardSend}
-                    className="p-3 rounded-xl border-2 border-neutral-200 hover:bg-neutral-50 transition"
+                    className="p-3 rounded-xl border-2 border-neutral-200 hover:bg-neutral-50 transition cursor-pointer"
                 >
                     <Clipboard className="w-5 h-5 mx-auto mb-1" />
                     <span className="text-[10px] md:text-xs">Clipboard</span>
@@ -343,7 +343,7 @@ export default function SenderPage() {
 
                 <button
                     onClick={() => setShowCameraModal(true)}
-                    className="p-3 rounded-xl border-2 border-neutral-200 hover:bg-neutral-50 transition"
+                    className="p-3 rounded-xl border-2 border-neutral-200 hover:bg-neutral-50 transition cursor-pointer"
                 >
                     <Camera className="w-5 h-5 mx-auto mb-1" />
                     <span className="text-[10px] md:text-xs">Camera</span>
@@ -390,13 +390,13 @@ export default function SenderPage() {
             {files.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {files.map((item) => (
-                        <div key={item.id} className="relative border rounded-xl p-3 space-y-2">
+                        <div key={item.id} className="relative border border-gray-200 bg-white rounded-xl p-3 space-y-2">
                             <button 
                                 onClick={() => removeFile(item.id)} 
-                                className="absolute top-2 right-2 text-neutral-400 hover:text-red-500"
+                                className="rounded-full bg-white p-1 absolute top-1 right-2 text-red-400 hover:text-red-500 cursor-pointer"
                                 disabled={sending}
                             >
-                                <X size={16} />
+                                <X size={20} />
                             </button>
 
                             <div className="h-20 bg-neutral-100 rounded-lg flex items-center justify-center overflow-hidden">
@@ -404,7 +404,7 @@ export default function SenderPage() {
                                     item.file.type.startsWith("video") ? (
                                         <video src={item.preview} className="h-full" />
                                     ) : (
-                                        <img src={item.preview} className="h-full object-cover" alt={item.file.name} />
+                                        <img src={item.preview} className="h-full w-full object-cover" alt={item.file.name} />
                                     )
                                 ) : (
                                     <span className="text-xs text-neutral-500">FILE</span>
@@ -430,7 +430,7 @@ export default function SenderPage() {
 
                             <button 
                                 onClick={() => setPreviewFile(item)} 
-                                className="flex items-center gap-1 text-xs text-blue-600"
+                                className="flex items-center gap-1 text-xs text-blue-600 cursor-pointer"
                             >
                                 <Eye size={14} /> Preview
                             </button>
@@ -443,7 +443,7 @@ export default function SenderPage() {
                 <button
                     onClick={startSending}
                     disabled={!socket.ready || sending}
-                    className="w-full py-4 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-4 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                     {sending ? `Sending… ${transferSpeed.toFixed(1)} MB/s` : `Start transfer (${files.length} files)`}
                 </button>

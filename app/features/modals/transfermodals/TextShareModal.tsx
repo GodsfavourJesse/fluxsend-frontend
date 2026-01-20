@@ -50,7 +50,7 @@ export default function TextShareModal({ onSend, onClose }: Props) {
                     <h2 className="text-xl font-semibold">Share Text or Link</h2>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition"
+                        className="p-2 hover:bg-gray-100 rounded-full transition cursor-pointer"
                     >
                         <X size={20} />
                     </button>
@@ -82,7 +82,7 @@ export default function TextShareModal({ onSend, onClose }: Props) {
                 <div className="mt-4 flex gap-3">
                     <button
                         onClick={handlePaste}
-                        className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition text-sm"
+                        className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition text-sm cursor-pointer"
                     >
                         Paste from Clipboard
                     </button>
@@ -90,7 +90,7 @@ export default function TextShareModal({ onSend, onClose }: Props) {
                     <button
                         onClick={handleSend}
                         disabled={!text.trim()}
-                        className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
                     >
                         <Send size={16} />
                         Send

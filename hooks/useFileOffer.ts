@@ -3,7 +3,7 @@ import { FileMeta } from "@/types/socket";
 
 export function useFileOffer() {
     const [offer, setOffer] = useState<{
-        file: FileMeta[];
+        files: FileMeta[]; // ✅ Changed from 'file' to 'files'
         totalSize: number;
     } | null>(null);
 
