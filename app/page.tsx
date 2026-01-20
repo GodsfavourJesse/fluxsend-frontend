@@ -29,7 +29,6 @@ export default function Home() {
     const [roomToken, setRoomToken] = useState<string | null>(null);
     const [connectedMode, setConnectedMode] = useState<null | "send" | "receive">(null);
     
-    // Track if we've already shown connecting toast
     const connectingToastShown = useRef(false);
     const currentToastId = useRef<string | null>(null);
     
@@ -52,17 +51,18 @@ export default function Home() {
                     setPairState("waiting");
                     setIsHost(true);
                     toast.success("Room created. Waiting for a device...");
-                    connectingToastShown.current = false; // Reset for next connection
+                    connectingToastShown.current = false;
                     break;
                         
                 case "peer-joining":
+                    // FIX: Store peer name immediately
                     setPeerName(msg.peerName);
                     setPairState("connecting");
                     
-                    // CRITICAL FIX: Send peer-ready immediately
+                    // Send peer-ready immediately
                     socket.send({ type: "peer-ready" });
                     
-                    // Show connecting toast only once
+                    // Show connecting toast only once with peer name
                     if (!connectingToastShown.current) {
                         connectingToastShown.current = true;
                         currentToastId.current = toast.loading(`Connecting to ${msg.peerName}...`);
@@ -74,14 +74,17 @@ export default function Home() {
                     setPairState("connected");
                     setRoomToken(null);
                     
-                    // Dismiss loading toast
+                    // Store connection state in localStorage
+                    localStorage.setItem("fluxsend_peer_name", msg.peerName);
+                    localStorage.setItem("fluxsend_is_host", isHost.toString());
+                    
                     if (currentToastId.current) {
                         toast.dismiss(currentToastId.current);
                         currentToastId.current = null;
                     }
                     
                     toast.success(`Connected to ${msg.peerName}`, { duration: 2000 });
-                    connectingToastShown.current = false; // Reset
+                    connectingToastShown.current = false;
                     break;
                     
                 case "peer-disconnected":
@@ -107,7 +110,7 @@ export default function Home() {
         });
 
         return () => {
-            socket.setOnMessage(() => {});
+            // Don't clear message handler - keep it active
         };
     }, [socket.ready, socket]);
 
@@ -117,7 +120,13 @@ export default function Home() {
         setPeerName(null);
         setIsHost(false);
         setRoomToken(null);
+        setConnectedMode(null);
         connectingToastShown.current = false;
+        
+        // Clear localStorage
+        localStorage.removeItem("fluxsend_peer_name");
+        localStorage.removeItem("fluxsend_is_host");
+        
         if (currentToastId.current) {
             toast.dismiss(currentToastId.current);
             currentToastId.current = null;
@@ -333,7 +342,7 @@ export default function Home() {
 
                             {(pairState === "connecting" || pairState === "disconnected") && (
                                 <ConnectingIndicator 
-                                    peer={peerName || undefined} 
+                                    peer={peerName || undefined}
                                     handshakeDuration={3000}
                                     disconnected={pairState === "disconnected"}
                                     onRetry={retryConnection}
@@ -361,7 +370,6 @@ export default function Home() {
                         return;
                     }
 
-                    // Show connecting toast only once
                     if (!connectingToastShown.current) {
                         connectingToastShown.current = true;
                         currentToastId.current = toast.loading("Connecting to device...");

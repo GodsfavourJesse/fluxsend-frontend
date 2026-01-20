@@ -9,7 +9,7 @@ const poppins = Poppins({
     variable: "--font-poppins",
 });
 
-// ✅ PWA Viewport Configuration
+// PWA Viewport Configuration
 export const viewport: Viewport = {
     themeColor: "#4F8CFF",
     width: "device-width",
@@ -18,7 +18,7 @@ export const viewport: Viewport = {
     userScalable: true,
 };
 
-// ✅ Enhanced Metadata with PWA support
+// Enhanced Metadata with PWA support
 export const metadata: Metadata = {
     title: "FluxSend | Secure Peer-to-Peer File Sharing",
     description: "Send files instantly across devices with FluxSend. No accounts, no setup, fully peer-to-peer and secure. Share images, videos, documents, and more.",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     creator: "Godsfavour Jesse",
     publisher: "FluxSend",
     
-    // ✅ PWA Manifest
+    // PWA Manifest
     manifest: "/manifest.json",
     
     // Robots
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
         },
     },
 
-    // ✅ PWA Icons (comprehensive)
+    // PWA Icons (comprehensive)
     icons: {
         icon: [
             { url: "/favicon.png", sizes: "any" },
@@ -57,7 +57,7 @@ export const metadata: Metadata = {
         ],
     },
 
-    // ✅ Apple Web App Meta Tags
+    // Apple Web App Meta Tags
     appleWebApp: {
         capable: true,
         statusBarStyle: "default",
@@ -105,7 +105,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <head>
-                {/* ✅ PWA Meta Tags */}
+                {/* PWA Meta Tags */}
                 <meta name="mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-status-bar-style" content="default" />

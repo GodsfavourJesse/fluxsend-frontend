@@ -12,6 +12,8 @@ import toast from "react-hot-toast";
 import { saveTransferState, resumeTransfer } from "@/lib/transferHistory";
 import CameraModal from "../features/modals/transfermodals/CameraModal";
 import TextShareModal from "../features/modals/transfermodals/TextShareModal";
+import { DisconnectFooter } from "../components/DisconnectFooter";
+import { useRouter } from "next/navigation";
 
 type SelectedFile = {
     id: string;
@@ -27,6 +29,7 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const MAX_TOTAL_SIZE = 2 * 1024 * 1024 * 1024;
 
 export default function SenderPage() {
+    const router = useRouter();
     const [files, setFiles] = useState<SelectedFile[]>([]);
     const [previewFile, setPreviewFile] = useState<SelectedFile | null>(null);
     const [sending, setSending] = useState(false);
@@ -36,6 +39,9 @@ export default function SenderPage() {
     const [shareMode, setShareMode] = useState<ShareMode>("files");
     const [isDragging, setIsDragging] = useState(false);
     const [transferSpeed, setTransferSpeed] = useState(0);
+    const [peerName, setPeerName] = useState<string | null>(null);
+    const [isHost, setIsHost] = useState(false);
+    
     const acceptedFiles = useRef<Set<string>>(new Set());
     const lastBytes = useRef(0);
     const currentBytes = useRef(0);
@@ -46,22 +52,47 @@ export default function SenderPage() {
         if (msg?.type === "file-accept") {
             acceptedFiles.current.add(msg.fileId);
         }
+        
+        // Handle graceful disconnect
+        if (msg?.type === "graceful-disconnect") {
+            toast.error(msg.message || "Peer left the room");
+            setTimeout(() => router.push("/"), 2000);
+        }
+        
+        // Handle peer disconnect
+        if (msg?.type === "peer-disconnected") {
+            toast.error("Peer disconnected");
+            setTimeout(() => router.push("/"), 2000);
+        }
+
+        // Store connection info
+        if (msg?.type === "connection-established") {
+            setPeerName(msg.peerName);
+        }
     });
 
-    // ✅ Transfer speed calculation
+    // Get connection state from localStorage (set during pairing)
+    useEffect(() => {
+        const storedPeerName = localStorage.getItem("fluxsend_peer_name");
+        const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
+        
+        if (storedPeerName) setPeerName(storedPeerName);
+        setIsHost(storedIsHost);
+    }, []);
+
+    // Transfer speed calculation
     useEffect(() => {
         if (!sending) return;
 
         const interval = setInterval(() => {
             const bytesPerSecond = currentBytes.current - lastBytes.current;
-            setTransferSpeed(bytesPerSecond / 1024 / 1024); // MB/s
+            setTransferSpeed(bytesPerSecond / 1024 / 1024);
             lastBytes.current = currentBytes.current;
         }, 1000);
 
         return () => clearInterval(interval);
     }, [sending]);
 
-    // ✅ Drag & Drop handlers
     const handleDragEnter = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -88,13 +119,10 @@ export default function SenderPage() {
         processFiles(droppedFiles);
     };
 
-    // ✅ Process files (from drop, input, or camera)
     const processFiles = (selectedFiles: File[]) => {
         const oversizedFiles = selectedFiles.filter(f => f.size > MAX_FILE_SIZE);
         if (oversizedFiles.length > 0) {
-            toast.error(
-                `${oversizedFiles.length} file(s) exceed 500MB limit`
-            );
+            toast.error(`${oversizedFiles.length} file(s) exceed 500MB limit`);
             return;
         }
 
@@ -125,7 +153,6 @@ export default function SenderPage() {
         e.target.value = "";
     };
 
-    // ✅ Folder selection
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const folderFiles = Array.from(e.target.files);
@@ -134,7 +161,6 @@ export default function SenderPage() {
         e.target.value = "";
     };
 
-    // ✅ Clipboard paste
     const handleClipboardSend = async () => {
         try {
             const text = await navigator.clipboard.readText();
@@ -154,7 +180,6 @@ export default function SenderPage() {
         }
     };
 
-    // ✅ Camera capture
     const handleCameraCapture = (photo: Blob) => {
         const file = new File([photo], `photo-${Date.now()}.jpg`, { type: "image/jpeg" });
         processFiles([file]);
@@ -162,7 +187,6 @@ export default function SenderPage() {
         toast.success("Photo added to queue");
     };
 
-    // ✅ Text send
     const handleTextSend = (text: string) => {
         socket.send({
             type: "text-share",
@@ -240,7 +264,6 @@ export default function SenderPage() {
                     }
                 );
 
-                // ✅ Save transfer state
                 await saveTransferState(fileId, item.file);
 
                 setFiles((prev) =>
@@ -272,13 +295,12 @@ export default function SenderPage() {
 
     return (
         <div 
-            className="min-h-screen p-6 max-w-4xl mx-auto space-y-6"
+            className="min-h-screen p-6 max-w-4xl mx-auto space-y-6 pb-32"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            {/* Drag overlay */}
             {isDragging && (
                 <div className="fixed inset-0 bg-blue-500/20 backdrop-blur-sm z-50 flex items-center justify-center border-4 border-dashed border-blue-500">
                     <div className="text-center">
@@ -311,7 +333,6 @@ export default function SenderPage() {
                 )}
             </div>
 
-            {/* Share mode selector */}
             <div className="grid grid-cols-4 gap-2">
                 <button
                     onClick={() => setShareMode("files")}
@@ -350,7 +371,6 @@ export default function SenderPage() {
                 </button>
             </div>
 
-            {/* File upload area */}
             {shareMode === "files" && (
                 <>
                     <div className="grid grid-cols-2 gap-4">
@@ -419,10 +439,7 @@ export default function SenderPage() {
                             {item.status === "paused" && (
                                 <button 
                                     className="text-xs text-blue-600"
-                                    onClick={() => {
-                                        // Resume transfer
-                                        resumeTransfer(item.id);
-                                    }}
+                                    onClick={() => resumeTransfer(item.id)}
                                 >
                                     Resume
                                 </button>
@@ -474,6 +491,12 @@ export default function SenderPage() {
             )}
 
             {previewFile && <PreviewModal file={previewFile.file} onClose={() => setPreviewFile(null)} />}
+
+            {/* Disconnect Footer */}
+            <DisconnectFooter 
+                isHost={isHost} 
+                peerName={peerName || undefined}
+            />
         </div>
     );
 }

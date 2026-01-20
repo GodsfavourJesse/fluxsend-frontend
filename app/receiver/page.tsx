@@ -5,8 +5,10 @@ import { useSocket } from "@/hooks/useSocket";
 import { useFileReceiver } from "@/hooks/useFileReceiver";
 import { Branding } from "../components/Branding";
 import { X, Download, CheckCircle } from "lucide-react";
+import { DisconnectFooter } from "../components/DisconnectFooter";
+import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
-/* ================= FILE OFFER TOAST ================= */
 function FileOfferToast({
     offer,
     onAccept,
@@ -51,7 +53,6 @@ function FileOfferToast({
     );
 }
 
-/* ================= PROGRESS MODAL ================= */
 function ReceiveProgressModal({
     fileName,
     progress,
@@ -79,24 +80,54 @@ function ReceiveProgressModal({
     );
 }
 
-/* ================= MAIN RECEIVER PAGE ================= */
 export default function ReceiverPage() {
+    const router = useRouter();
     const socket = useSocket();
     const receiver = useFileReceiver();
     const [showProgress, setShowProgress] = useState(false);
+    const [peerName, setPeerName] = useState<string | null>(null);
+    const [isHost, setIsHost] = useState(false);
 
     useEffect(() => {
         if (!socket.ready) return;
 
-        socket.setOnMessage(receiver.handleMessage);
+        socket.setOnMessage((msg) => {
+            receiver.handleMessage(msg);
+
+            // Handle graceful disconnect
+            if (msg?.type === "graceful-disconnect") {
+                toast.error(msg.message || "Peer left the room");
+                setTimeout(() => router.push("/"), 2000);
+            }
+
+            // Handle peer disconnect
+            if (msg?.type === "peer-disconnected") {
+                toast.error("Peer disconnected");
+                setTimeout(() => router.push("/"), 2000);
+            }
+
+            // Store connection info
+            if (msg?.type === "connection-established") {
+                setPeerName(msg.peerName);
+            }
+        });
+
         receiver.setSender(socket.send);
 
         return () => {
-            receiver.reset();
+            // Keep message handler active
         };
-    }, [socket.ready]);
+    }, [socket.ready, socket, receiver, router]);
 
-    /* Show progress modal only when receiving */
+    // Get connection state from localStorage
+    useEffect(() => {
+        const storedPeerName = localStorage.getItem("fluxsend_peer_name");
+        const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
+        
+        if (storedPeerName) setPeerName(storedPeerName);
+        setIsHost(storedIsHost);
+    }, []);
+
     useEffect(() => {
         if (receiver.currentFile?.current && receiver.progress < 100) {
             setShowProgress(true);
@@ -106,8 +137,7 @@ export default function ReceiverPage() {
     }, [receiver.progress, receiver.currentFile]);
 
     return (
-        <div className="min-h-screen bg-neutral-100 px-4 py-6 max-w-5xl mx-auto">
-
+        <div className="min-h-screen bg-neutral-100 px-4 py-6 max-w-5xl mx-auto pb-32">
             <div className="w-full flex mb-10 items-center justify-center">    
                 <Branding />
             </div>
@@ -119,7 +149,6 @@ export default function ReceiverPage() {
                 </p>
             </div>
 
-            {/* ===== FILE OFFER TOASTS ===== */}
             {receiver.incomingOffers.map((offer) => (
                 <FileOfferToast
                     key={offer.fileId}
@@ -129,7 +158,6 @@ export default function ReceiverPage() {
                 />
             ))}
 
-            {/* ===== PROGRESS MODAL ===== */}
             {showProgress && receiver.currentFile?.current && (
                 <ReceiveProgressModal
                     fileName={receiver.currentFile.current.name}
@@ -137,7 +165,6 @@ export default function ReceiverPage() {
                 />
             )}
 
-            {/* ===== RECEIVED FILES ===== */}
             {receiver.receivedFiles.length > 0 && (
                 <div className="mt-8">
                     <h2 className="text-lg font-semibold mb-4">Received</h2>
@@ -167,6 +194,12 @@ export default function ReceiverPage() {
                     </div>
                 </div>
             )}
+
+            {/* Disconnect Footer */}
+            <DisconnectFooter 
+                isHost={isHost} 
+                peerName={peerName || undefined}
+            />
         </div>
     );
 }
