@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { parsePairingCode } from "./utils/parsePairingCode";
 import { useFileReceiver } from "@/hooks/useFileReceiver";
+import { PWARegister } from "./components/PWARegister";
 
 type PairState = "idle" | "waiting" | "connecting" | "connected" | "disconnected";
 
@@ -340,6 +341,8 @@ export default function Home() {
             />
 
             <Toaster position="top-center" />
+
+            <PWARegister />
         </main>
     );
 }

@@ -1,0 +1,116 @@
+{
+  "name": "FluxSend - Secure File Sharing",
+  "short_name": "FluxSend",
+  "description": "Send files instantly across devices with FluxSend. No accounts, no setup, fully peer-to-peer and secure.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F7FB",
+  "theme_color": "#4F8CFF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "productivity"],
+  "screenshots": [
+    {
+      "src": "/screenshot-1.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "FluxSend file sharing interface"
+    },
+    {
+      "src": "/screenshot-2.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "FluxSend mobile view"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "file",
+          "accept": ["image/*", "video/*", "audio/*", "application/*", "text/*"]
+        }
+      ]
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Send Files",
+      "short_name": "Send",
+      "description": "Quickly send files to another device",
+      "url": "/share",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Receive Files",
+      "short_name": "Receive",
+      "description": "Open receiver to get files",
+      "url": "/receiver",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

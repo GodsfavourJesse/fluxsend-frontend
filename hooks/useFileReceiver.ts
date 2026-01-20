@@ -1,11 +1,17 @@
 import { useRef, useState } from "react";
 
-export function useFileReceiver() {
+// Hook now accepts an optional sender function
+export function useFileReceiver(sender?: (data: any) => void) {
     const [incomingOffers, setIncomingOffers] = useState<any[]>([]);
     const [receivedFiles, setReceivedFiles] = useState<any[]>([]);
     const currentFile = useRef<any | null>(null);
     const senderRef = useRef<(data: any) => void>();
     const [progress, setProgress] = useState(0);
+
+    // If sender is provided during initialization, set it
+    if (sender && !senderRef.current) {
+        senderRef.current = sender;
+    }
 
     function setSender(fn: (data: any) => void) {
         senderRef.current = fn;
@@ -39,7 +45,7 @@ export function useFileReceiver() {
             currentFile.current.received += msg.byteLength;
             setProgress(
                 Math.floor(
-                (currentFile.current.received / currentFile.current.size) * 100
+                    (currentFile.current.received / currentFile.current.size) * 100
                 )
             );
         }
