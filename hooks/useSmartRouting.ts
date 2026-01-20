@@ -5,7 +5,7 @@ export function useSmartRouting({
     hasIncomingOffer,
     hasSelectedFiles,
 }: {
-    hasIncomingfOffer: boolean;
+    hasIncomingOffer: boolean;
     hasSelectedFiles: boolean;
 }) {
     const router =  useRouter();

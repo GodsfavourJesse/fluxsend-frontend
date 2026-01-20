@@ -1,3 +1,4 @@
+import { data } from "framer-motion/client";
 import { useRef, useState } from "react";
 
 // Hook now accepts an optional sender function
@@ -5,7 +6,7 @@ export function useFileReceiver(sender?: (data: any) => void) {
     const [incomingOffers, setIncomingOffers] = useState<any[]>([]);
     const [receivedFiles, setReceivedFiles] = useState<any[]>([]);
     const currentFile = useRef<any | null>(null);
-    const senderRef = useRef<(data: any) => void>();
+    const senderRef = useRef<((data: any) => void) | null>(null);
     const [progress, setProgress] = useState(0);
 
     // If sender is provided during initialization, set it
