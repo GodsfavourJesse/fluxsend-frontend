@@ -24,6 +24,9 @@ interface TransferDB extends DBSchema {
             type: 'sent' | 'received';
             peerName?: string;
         };
+        indexes: {
+            'timestamp': number;
+        }
     };
 }
 
