@@ -13,7 +13,7 @@ export function useSocket(onMessage?: MessageHandler) {
 
     const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000";
     const MAX_RECONNECT_ATTEMPTS = 5;
-    const RECONNECT_DELAY_BASE = 2000; // 2s base delay
+    const RECONNECT_DELAY_BASE = 2000;
 
     const connect = () => {
         // Clean up existing connection
@@ -31,7 +31,7 @@ export function useSocket(onMessage?: MessageHandler) {
                 setReady(true);
                 setReconnecting(false);
                 reconnectAttempts.current = 0;
-                console.log("WebSocket connected");
+                console.log("✅ WebSocket connected");
             };
 
             ws.onmessage = (e) => {
@@ -48,7 +48,7 @@ export function useSocket(onMessage?: MessageHandler) {
                 try {
                     const data = JSON.parse(e.data);
 
-                    // Auto-respond to ping
+                    // ✅ CRITICAL: Auto-respond to ping immediately
                     if (data.type === "ping") {
                         ws.send(JSON.stringify({ type: "pong" }));
                         return;
@@ -62,7 +62,7 @@ export function useSocket(onMessage?: MessageHandler) {
 
             ws.onclose = (event) => {
                 setReady(false);
-                console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
+                console.log(`WebSocket closed. Code: ${event.code}`);
 
                 // Auto-reconnect if not intentional
                 if (shouldReconnect.current && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
@@ -70,7 +70,7 @@ export function useSocket(onMessage?: MessageHandler) {
                     const delay = RECONNECT_DELAY_BASE * reconnectAttempts.current;
                     
                     setReconnecting(true);
-                    console.log(`Reconnecting in ${delay}ms... (attempt ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`);
+                    console.log(`Reconnecting in ${delay}ms... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`);
                     
                     reconnectTimer.current = setTimeout(() => {
                         connect();
@@ -94,7 +94,6 @@ export function useSocket(onMessage?: MessageHandler) {
         shouldReconnect.current = true;
         connect();
 
-        // Cleanup on unmount
         return () => {
             shouldReconnect.current = false;
             
@@ -133,13 +132,11 @@ export function useSocket(onMessage?: MessageHandler) {
             messageHandler.current = fn;
         },
 
-        // Manual reconnect method
         reconnect: () => {
             reconnectAttempts.current = 0;
             connect();
         },
 
-        // Disconnect method
         disconnect: () => {
             shouldReconnect.current = false;
             if (socketRef.current) {

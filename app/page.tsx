@@ -14,7 +14,6 @@ import { ConnectingIndicator } from "./features/pairing/ConnectingIndicator";
 import ConnectedActionChooser from "./features/pairing/ConnectedActionChooser";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
-import { parsePairingCode } from "./utils/parsePairingCode";
 import { useFileReceiver } from "@/hooks/useFileReceiver";
 import { PWARegister } from "./components/PWARegister";
 
@@ -29,6 +28,10 @@ export default function Home() {
     const [isHost, setIsHost] = useState(false);
     const [roomToken, setRoomToken] = useState<string | null>(null);
     const [connectedMode, setConnectedMode] = useState<null | "send" | "receive">(null);
+    
+    // Track if we've already shown connecting toast
+    const connectingToastShown = useRef(false);
+    const currentToastId = useRef<string | null>(null);
     
     const socket = useSocket();
     
@@ -49,32 +52,56 @@ export default function Home() {
                     setPairState("waiting");
                     setIsHost(true);
                     toast.success("Room created. Waiting for a device...");
+                    connectingToastShown.current = false; // Reset for next connection
                     break;
                         
                 case "peer-joining":
                     setPeerName(msg.peerName);
                     setPairState("connecting");
-                    toast.loading(`Connecting to ${msg.peerName}...`);
+                    
+                    // CRITICAL FIX: Send peer-ready immediately
+                    socket.send({ type: "peer-ready" });
+                    
+                    // Show connecting toast only once
+                    if (!connectingToastShown.current) {
+                        connectingToastShown.current = true;
+                        currentToastId.current = toast.loading(`Connecting to ${msg.peerName}...`);
+                    }
                     break;
                             
                 case "connection-established":
                     setPeerName(msg.peerName);
                     setPairState("connected");
                     setRoomToken(null);
-                    toast.dismiss();
-                    toast.success(`Connection established with ${msg.peerName}`);
+                    
+                    // Dismiss loading toast
+                    if (currentToastId.current) {
+                        toast.dismiss(currentToastId.current);
+                        currentToastId.current = null;
+                    }
+                    
+                    toast.success(`Connected to ${msg.peerName}`, { duration: 2000 });
+                    connectingToastShown.current = false; // Reset
                     break;
                     
                 case "peer-disconnected":
-                    toast.dismiss();
+                    if (currentToastId.current) {
+                        toast.dismiss(currentToastId.current);
+                        currentToastId.current = null;
+                    }
                     toast.error("Peer disconnected");
                     setPairState("disconnected");
+                    connectingToastShown.current = false;
                     break;
                         
                 case "error":
-                    toast.dismiss();
+                    if (currentToastId.current) {
+                        toast.dismiss(currentToastId.current);
+                        currentToastId.current = null;
+                    }
                     toast.error(msg.message);
                     resetPairingState();
+                    connectingToastShown.current = false;
                     break;
             }
         });
@@ -82,7 +109,7 @@ export default function Home() {
         return () => {
             socket.setOnMessage(() => {});
         };
-    }, [socket.ready]);
+    }, [socket.ready, socket]);
 
     const resetPairingState = () => {
         setPairState("idle");
@@ -90,6 +117,11 @@ export default function Home() {
         setPeerName(null);
         setIsHost(false);
         setRoomToken(null);
+        connectingToastShown.current = false;
+        if (currentToastId.current) {
+            toast.dismiss(currentToastId.current);
+            currentToastId.current = null;
+        }
     };
 
     const createRoom = () => {
@@ -111,7 +143,11 @@ export default function Home() {
     };
     
     const retryConnection = () => {
-        toast.dismiss();
+        if (currentToastId.current) {
+            toast.dismiss(currentToastId.current);
+            currentToastId.current = null;
+        }
+        
         if (isHost) {
             resetPairingState();
             createRoom();
@@ -155,7 +191,7 @@ export default function Home() {
             </div>,
             {duration: Infinity}
         );
-    }, [receiver.incomingOffers]);
+    }, [receiver.incomingOffers, receiver, router]);
 
     useEffect(() => {
         if (!socket.ready && pairState === "connected") {
@@ -170,7 +206,7 @@ export default function Home() {
     useEffect(() => {
         if (connectedMode === "send") router.push("/share");
         else if (connectedMode === "receive") router.push("/receiver");
-    }, [connectedMode]);
+    }, [connectedMode, router]);
 
     return (
         <main className="min-h-screen bg-[#F5F7FB] flex items-center justify-center">
@@ -298,7 +334,7 @@ export default function Home() {
                             {(pairState === "connecting" || pairState === "disconnected") && (
                                 <ConnectingIndicator 
                                     peer={peerName || undefined} 
-                                    handshakeDuration={15000}
+                                    handshakeDuration={3000}
                                     disconnected={pairState === "disconnected"}
                                     onRetry={retryConnection}
                                 />
@@ -325,9 +361,12 @@ export default function Home() {
                         return;
                     }
 
-                    toast.loading("Connecting to device...");
+                    // Show connecting toast only once
+                    if (!connectingToastShown.current) {
+                        connectingToastShown.current = true;
+                        currentToastId.current = toast.loading("Connecting to device...");
+                    }
 
-                    // ✅ Send token only if it exists (from QR scan)
                     socket.send({
                         type: "join-room",
                         roomId: code.roomId,
