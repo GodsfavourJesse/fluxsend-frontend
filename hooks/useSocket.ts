@@ -31,7 +31,7 @@ export function useSocket(onMessage?: MessageHandler) {
                 setReady(true);
                 setReconnecting(false);
                 reconnectAttempts.current = 0;
-                console.log("✅ WebSocket connected");
+                console.log("WebSocket connected");
             };
 
             ws.onmessage = (e) => {
@@ -48,7 +48,7 @@ export function useSocket(onMessage?: MessageHandler) {
                 try {
                     const data = JSON.parse(e.data);
 
-                    // ✅ CRITICAL: Auto-respond to ping immediately
+                    // CRITICAL: Auto-respond to ping immediately
                     if (data.type === "ping") {
                         ws.send(JSON.stringify({ type: "pong" }));
                         return;
