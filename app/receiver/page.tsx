@@ -9,6 +9,7 @@ import { DisconnectFooter } from "../components/DisconnectFooter";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { useFileOfferNotifications } from "@/hooks/useFileOfferNotification";
 
 function getFileIcon(fileName: string) {
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -165,7 +166,9 @@ export default function ReceiverPage() {
     const [peerName, setPeerName] = useState<string | null>(null);
     const [isHost, setIsHost] = useState(false);
 
-    // ✅ Get connection state from localStorage
+    useFileOfferNotifications(receiver.incomingOffers);
+
+    // Get connection state from localStorage
     useEffect(() => {
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
@@ -181,7 +184,7 @@ export default function ReceiverPage() {
         }
     }, [router]);
 
-    // ✅ Register message handler with global socket
+    // Register message handler with global socket
     useEffect(() => {
         if (!socket.ready) return;
 
