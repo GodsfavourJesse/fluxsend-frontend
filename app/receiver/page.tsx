@@ -57,19 +57,16 @@ function FileOfferCard({
                 animate={{ scale: 1 }}
                 className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md"
             >
-                {/* Icon */}
                 <div className="flex justify-center mb-4">
                     <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                         {getFileIcon(offer.name)}
                     </div>
                 </div>
 
-                {/* Title */}
                 <h3 className="text-xl font-semibold text-center mb-2 text-neutral-900">
                     Incoming File
                 </h3>
                 
-                {/* File Info */}
                 <div className="bg-neutral-50 rounded-2xl p-4 mb-6">
                     <p className="font-medium text-neutral-900 truncate text-center mb-1">
                         {offer.name}
@@ -79,7 +76,6 @@ function FileOfferCard({
                     </p>
                 </div>
 
-                {/* Actions */}
                 <div className="grid grid-cols-2 gap-3">
                     <button
                         onClick={() => onReject(offer.fileId)}
@@ -117,7 +113,6 @@ function ReceiveProgressModal({
                 animate={{ scale: 1, y: 0 }}
                 className="bg-gradient-to-br from-neutral-900 to-neutral-800 w-full max-w-md rounded-3xl p-8 shadow-2xl"
             >
-                {/* Icon */}
                 <div className="flex justify-center mb-6">
                     <motion.div
                         animate={{ rotate: 360 }}
@@ -128,7 +123,6 @@ function ReceiveProgressModal({
                     </motion.div>
                 </div>
 
-                {/* Title */}
                 <h2 className="text-white text-xl font-semibold text-center mb-2">
                     Receiving File
                 </h2>
@@ -136,7 +130,6 @@ function ReceiveProgressModal({
                     {fileName}
                 </p>
 
-                {/* Progress Bar */}
                 <div className="relative w-full h-3 bg-neutral-700 rounded-full overflow-hidden mb-3">
                     <motion.div
                         initial={{ width: 0 }}
@@ -146,7 +139,6 @@ function ReceiveProgressModal({
                     />
                 </div>
 
-                {/* Progress Text */}
                 <div className="flex justify-between text-sm">
                     <span className="text-neutral-400">{progress}%</span>
                     <span className="text-neutral-400">
@@ -168,7 +160,6 @@ export default function ReceiverPage() {
 
     useFileOfferNotifications(receiver.incomingOffers);
 
-    // Get connection state from localStorage
     useEffect(() => {
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
@@ -177,20 +168,26 @@ export default function ReceiverPage() {
         if (storedPeerName) setPeerName(storedPeerName);
         setIsHost(storedIsHost);
 
-        // Redirect if not connected
         if (!isConnected) {
             toast.error("Not connected. Please pair first.");
             router.push("/");
         }
     }, [router]);
 
-    // Register message handler with global socket
     useEffect(() => {
         if (!socket.ready) return;
 
+        // Set sender function first
+        receiver.setSender(socket.send);
+
+        // Register message handler
         const cleanup = socket.on((msg) => {
+            console.log("📥 Receiver got message:", msg?.type || "binary");
+            
+            // Pass message to receiver
             receiver.handleMessage(msg);
 
+            // Handle disconnection
             if (msg?.type === "graceful-disconnect") {
                 toast.error(msg.message || "Peer left the room");
                 localStorage.removeItem("fluxsend_connected");
@@ -203,8 +200,6 @@ export default function ReceiverPage() {
                 setTimeout(() => router.push("/"), 2000);
             }
         });
-
-        receiver.setSender(socket.send);
 
         return cleanup;
     }, [socket.ready, socket, receiver, router]);
@@ -220,7 +215,6 @@ export default function ReceiverPage() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/30 to-purple-50/30 px-4 py-6 pb-32">
             <div className="max-w-6xl mx-auto">
-                {/* Header */}
                 <div className="flex items-center justify-between mb-12">
                     <Branding />
                     
@@ -234,7 +228,6 @@ export default function ReceiverPage() {
                     )}
                 </div>
 
-                {/* Hero Section */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -248,7 +241,6 @@ export default function ReceiverPage() {
                     </p>
                 </motion.div>
 
-                {/* Waiting State */}
                 {receiver.receivedFiles.length === 0 && !receiver.incomingOffers.length && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
@@ -256,7 +248,6 @@ export default function ReceiverPage() {
                         className="max-w-2xl mx-auto"
                     >
                         <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-12 shadow-xl border border-neutral-200/50">
-                            {/* Animated Icon */}
                             <div className="flex justify-center mb-8">
                                 <motion.div
                                     animate={{ 
@@ -281,7 +272,6 @@ export default function ReceiverPage() {
                                 Files sent from the connected device will appear here
                             </p>
 
-                            {/* Feature List */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="text-center">
                                     <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center mx-auto mb-3">
@@ -306,7 +296,6 @@ export default function ReceiverPage() {
                     </motion.div>
                 )}
 
-                {/* Received Files */}
                 {receiver.receivedFiles.length > 0 && (
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -327,7 +316,6 @@ export default function ReceiverPage() {
                                     transition={{ delay: index * 0.1 }}
                                     className="group bg-white/80 backdrop-blur-xl rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-300 border border-neutral-200/50 hover:border-blue-300"
                                 >
-                                    {/* Icon & Badge */}
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                                             {getFileIcon(file.name)}
@@ -338,7 +326,6 @@ export default function ReceiverPage() {
                                         </div>
                                     </div>
 
-                                    {/* File Info */}
                                     <h3 className="font-semibold text-neutral-900 mb-1 truncate group-hover:text-blue-600 transition-colors">
                                         {file.name}
                                     </h3>
@@ -346,7 +333,6 @@ export default function ReceiverPage() {
                                         {(file.blob.size / (1024 * 1024)).toFixed(2)} MB
                                     </p>
 
-                                    {/* Download Button */}
                                     <button
                                         onClick={() => receiver.download(file)}
                                         className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold flex items-center justify-center gap-2 hover:from-blue-700 hover:to-purple-700 transition-all active:scale-95 shadow-lg shadow-blue-500/20"
@@ -360,7 +346,6 @@ export default function ReceiverPage() {
                     </motion.div>
                 )}
 
-                {/* File Offer Modal */}
                 <AnimatePresence>
                     {receiver.incomingOffers.map((offer) => (
                         <FileOfferCard
@@ -372,7 +357,6 @@ export default function ReceiverPage() {
                     ))}
                 </AnimatePresence>
 
-                {/* Progress Modal */}
                 <AnimatePresence>
                     {showProgress && receiver.currentFile?.current && (
                         <ReceiveProgressModal
@@ -383,7 +367,6 @@ export default function ReceiverPage() {
                 </AnimatePresence>
             </div>
 
-            {/* Disconnect Footer */}
             <DisconnectFooter 
                 isHost={isHost} 
                 peerName={peerName || undefined}

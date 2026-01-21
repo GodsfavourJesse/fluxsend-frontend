@@ -27,8 +27,10 @@ export default function Home() {
     const [isHost, setIsHost] = useState(false);
     const [roomToken, setRoomToken] = useState<string | null>(null);
     const [connectedMode, setConnectedMode] = useState<null | "send" | "receive">(null);
+    const [connectingProgress, setConnectingProgress] = useState(0);
     
     const connectingToastId = useRef<string | null>(null);
+    const connectingTimer = useRef<NodeJS.Timeout | null>(null);
     
     const socket = useGlobalSocket();
     
@@ -50,6 +52,7 @@ export default function Home() {
                 case "peer-joining":
                     setPeerName(msg.peerName);
                     setPairState("connecting");
+                    setConnectingProgress(0);
                     
                     // Show connecting toast ONCE
                     if (!connectingToastId.current) {
@@ -57,16 +60,41 @@ export default function Home() {
                             id: "connecting-toast"
                         });
                     }
+
+                    // Start progress animation
+                    if (connectingTimer.current) {
+                        clearInterval(connectingTimer.current);
+                    }
+                    
+                    connectingTimer.current = setInterval(() => {
+                        setConnectingProgress(prev => {
+                            if (prev >= 100) {
+                                if (connectingTimer.current) {
+                                    clearInterval(connectingTimer.current);
+                                }
+                                return 100;
+                            }
+                            return prev + 3.33; // Reach 100% in ~3 seconds
+                        });
+                    }, 100);
                     break;
                             
                 case "connection-established":
-                    console.log("Connection established with:", msg.peerName);
+                    console.log("✅ Connection established with:", msg.peerName);
+                    
+                    // Clear connecting timer
+                    if (connectingTimer.current) {
+                        clearInterval(connectingTimer.current);
+                        connectingTimer.current = null;
+                    }
+                    
+                    // Ensure progress reaches 100%
+                    setConnectingProgress(100);
                     
                     setPeerName(msg.peerName);
-                    setPairState("connected");
                     setRoomToken(null);
                     
-                    // CRITICAL: Dismiss connecting toast
+                    // Dismiss connecting toast
                     if (connectingToastId.current) {
                         toast.dismiss(connectingToastId.current);
                         toast.dismiss("connecting-toast");
@@ -78,10 +106,17 @@ export default function Home() {
                     localStorage.setItem("fluxsend_is_host", isHost.toString());
                     localStorage.setItem("fluxsend_connected", "true");
                     
-                    // NO TOAST HERE - let the modal handle the celebration
+                    // WAIT for animation to complete, then show action chooser
+                    setTimeout(() => {
+                        setPairState("connected");
+                    }, 500);
                     break;
                     
                 case "peer-disconnected":
+                    if (connectingTimer.current) {
+                        clearInterval(connectingTimer.current);
+                        connectingTimer.current = null;
+                    }
                     if (connectingToastId.current) {
                         toast.dismiss(connectingToastId.current);
                         toast.dismiss("connecting-toast");
@@ -93,6 +128,10 @@ export default function Home() {
                     break;
                         
                 case "error":
+                    if (connectingTimer.current) {
+                        clearInterval(connectingTimer.current);
+                        connectingTimer.current = null;
+                    }
                     if (connectingToastId.current) {
                         toast.dismiss(connectingToastId.current);
                         toast.dismiss("connecting-toast");
@@ -114,6 +153,12 @@ export default function Home() {
         setIsHost(false);
         setRoomToken(null);
         setConnectedMode(null);
+        setConnectingProgress(0);
+        
+        if (connectingTimer.current) {
+            clearInterval(connectingTimer.current);
+            connectingTimer.current = null;
+        }
         
         if (connectingToastId.current) {
             toast.dismiss(connectingToastId.current);
@@ -148,6 +193,10 @@ export default function Home() {
     };
     
     const retryConnection = () => {
+        if (connectingTimer.current) {
+            clearInterval(connectingTimer.current);
+            connectingTimer.current = null;
+        }
         if (connectingToastId.current) {
             toast.dismiss(connectingToastId.current);
             toast.dismiss("connecting-toast");
@@ -182,6 +231,15 @@ export default function Home() {
             router.push("/receiver");
         }
     }, [connectedMode, router]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (connectingTimer.current) {
+                clearInterval(connectingTimer.current);
+            }
+        };
+    }, []);
 
     return (
         <main className="min-h-screen bg-[#F5F7FB] flex items-center justify-center">
@@ -307,11 +365,20 @@ export default function Home() {
                                 </motion.div>
                             )}
 
-                            {(pairState === "connecting" || pairState === "disconnected") && (
+                            {pairState === "connecting" && (
                                 <ConnectingIndicator 
                                     peer={peerName || undefined}
-                                    handshakeDuration={3000}
-                                    disconnected={pairState === "disconnected"}
+                                    progress={connectingProgress}
+                                    disconnected={false}
+                                    onRetry={retryConnection}
+                                />
+                            )}
+
+                            {pairState === "disconnected" && (
+                                <ConnectingIndicator 
+                                    peer={peerName || undefined}
+                                    progress={0}
+                                    disconnected={true}
                                     onRetry={retryConnection}
                                 />
                             )}
@@ -358,7 +425,25 @@ export default function Home() {
                     });
 
                     setPairState("connecting");
+                    setConnectingProgress(0);
                     setIsModalOpen(false);
+
+                    // Start progress animation for joiner
+                    if (connectingTimer.current) {
+                        clearInterval(connectingTimer.current);
+                    }
+                    
+                    connectingTimer.current = setInterval(() => {
+                        setConnectingProgress(prev => {
+                            if (prev >= 100) {
+                                if (connectingTimer.current) {
+                                    clearInterval(connectingTimer.current);
+                                }
+                                return 100;
+                            }
+                            return prev + 3.33;
+                        });
+                    }, 100);
                 }}
             />
 

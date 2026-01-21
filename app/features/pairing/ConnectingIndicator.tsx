@@ -1,37 +1,20 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState } from "react";
 
 type ConnectingIndicatorProps = {
     peer?: string;
-    handshakeDuration?: number;
+    progress: number;
     onRetry?: () => void;
     disconnected?: boolean;
 };
 
 export function ConnectingIndicator({
     peer,
-    handshakeDuration = 3000, // ✅ Fast default: 3s
+    progress,
     onRetry,
     disconnected = false,
 }: ConnectingIndicatorProps) {
-    const [progress, setProgress] = useState(0);
-
-    useEffect(() => {
-        if (disconnected) return;
-
-        setProgress(0);
-        const interval = 50; // Update every 50ms for smooth animation
-        const step = (interval / handshakeDuration) * 100;
-
-        const timer = setInterval(() => {
-            setProgress((prev) => Math.min(prev + step, 100));
-        }, interval);
-
-        return () => clearInterval(timer);
-    }, [handshakeDuration, disconnected]);
-
     return (
         <AnimatePresence mode="wait">
             <motion.div
@@ -56,24 +39,52 @@ export function ConnectingIndicator({
                     </>
                 ) : (
                     <>
-                        {/* Spinner */}
-                        <div className="relative h-14 w-14">
-                            <motion.div
-                                className="absolute inset-0 rounded-full border-4 border-blue-100"
-                            />
-                            <motion.div
-                                className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent"
-                                animate={{ rotate: 360 }}
-                                transition={{
-                                    duration: 1,
-                                    repeat: Infinity,
-                                    ease: "linear"
-                                }}
-                            />
+                        {/* Spinner with Progress */}
+                        <div className="relative h-20 w-20">
+                            {/* Background circle */}
+                            <svg className="absolute inset-0" viewBox="0 0 100 100">
+                                <circle
+                                    cx="50"
+                                    cy="50"
+                                    r="45"
+                                    fill="none"
+                                    stroke="#E5E7EB"
+                                    strokeWidth="8"
+                                />
+                            </svg>
                             
-                            {/* Progress indicator */}
+                            {/* Progress circle */}
+                            <svg 
+                                className="absolute inset-0 -rotate-90" 
+                                viewBox="0 0 100 100"
+                            >
+                                <motion.circle
+                                    cx="50"
+                                    cy="50"
+                                    r="45"
+                                    fill="none"
+                                    stroke="url(#gradient)"
+                                    strokeWidth="8"
+                                    strokeLinecap="round"
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: progress / 100 }}
+                                    transition={{ duration: 0.3, ease: "easeOut" }}
+                                    style={{
+                                        pathLength: progress / 100,
+                                        strokeDasharray: "0 1"
+                                    }}
+                                />
+                                <defs>
+                                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stopColor="#3B82F6" />
+                                        <stop offset="100%" stopColor="#8B5CF6" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            
+                            {/* Progress text */}
                             <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-xs font-medium text-blue-600">
+                                <span className="text-lg font-bold text-blue-600">
                                     {Math.round(progress)}%
                                 </span>
                             </div>
@@ -84,7 +95,10 @@ export function ConnectingIndicator({
                                 {peer ? `Connecting to ${peer}` : "Connecting"}
                             </p>
                             <p className="text-xs text-neutral-500">
-                                Establishing secure connection...
+                                {progress < 30 && "Initiating connection..."}
+                                {progress >= 30 && progress < 60 && "Establishing secure channel..."}
+                                {progress >= 60 && progress < 90 && "Verifying encryption..."}
+                                {progress >= 90 && "Almost there..."}
                             </p>
                         </div>
                     </>

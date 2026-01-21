@@ -9,7 +9,6 @@ import PreviewModal from "../features/modals/transfermodals/PreviewModal";
 import { Branding } from "../components/Branding";
 import TransferModal from "../features/modals/transfermodals/TransferModal";
 import toast from "react-hot-toast";
-import { saveTransferState, resumeTransfer } from "@/lib/transferHistory";
 import CameraModal from "../features/modals/transfermodals/CameraModal";
 import TextShareModal from "../features/modals/transfermodals/TextShareModal";
 import { DisconnectFooter } from "../components/DisconnectFooter";
@@ -20,7 +19,7 @@ type SelectedFile = {
     file: File;
     preview?: string;
     progress: number;
-    status: "pending" | "sending" | "done" | "paused";
+    status: "pending" | "sending" | "done" | "paused" | "error";
 };
 
 type ShareMode = "files" | "text" | "clipboard" | "camera";
@@ -48,10 +47,8 @@ export default function SenderPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
 
-    // Use global socket
     const socket = useGlobalSocket();
 
-    // Get connection state from localStorage
     useEffect(() => {
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
@@ -60,20 +57,29 @@ export default function SenderPage() {
         if (storedPeerName) setPeerName(storedPeerName);
         setIsHost(storedIsHost);
 
-        // Redirect if not connected
         if (!isConnected) {
             toast.error("Not connected. Please pair first.");
             router.push("/");
         }
     }, [router]);
 
-    // Register message handler
     useEffect(() => {
         if (!socket.ready) return;
 
         const cleanup = socket.on((msg) => {
             if (msg?.type === "file-accept") {
+                console.log("✅ File accepted:", msg.fileId);
                 acceptedFiles.current.add(msg.fileId);
+            }
+            
+            if (msg?.type === "file-reject") {
+                console.log("❌ File rejected:", msg.fileId);
+                toast.error("File was declined by receiver");
+                setFiles((prev) =>
+                    prev.map((f) =>
+                        f.id === msg.fileId ? { ...f, status: "error" } : f
+                    )
+                );
             }
             
             if (msg?.type === "graceful-disconnect") {
@@ -156,6 +162,7 @@ export default function SenderPage() {
         }));
 
         setFiles((prev) => [...prev, ...selected]);
+        toast.success(`Added ${selectedFiles.length} file(s)`);
     };
 
     const handleSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,7 +174,6 @@ export default function SenderPage() {
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const folderFiles = Array.from(e.target.files);
-        toast.success(`Selected ${folderFiles.length} files from folder`);
         processFiles(folderFiles);
         e.target.value = "";
     };
@@ -195,7 +201,6 @@ export default function SenderPage() {
         const file = new File([photo], `photo-${Date.now()}.jpg`, { type: "image/jpeg" });
         processFiles([file]);
         setShowCameraModal(false);
-        toast.success("Photo added to queue");
     };
 
     const handleTextSend = (text: string) => {
@@ -227,17 +232,27 @@ export default function SenderPage() {
     }, [files]);
 
     const startSending = async () => {
-        if (!socket.ready || sending) return;
+        if (!socket.ready || sending) {
+            toast.error("Not ready to send");
+            return;
+        }
 
         setSending(true);
         setShowTransferModal(true);
         currentBytes.current = 0;
         lastBytes.current = 0;
+        acceptedFiles.current.clear();
+
+        let successCount = 0;
+        let failCount = 0;
 
         for (const item of files) {
             if (item.status !== "pending") continue;
 
             try {
+                console.log(`📤 Offering file: ${item.file.name}`);
+                
+                // Offer the file
                 const fileId = offerFile(item.file, socket.send);
 
                 setFiles((prev) =>
@@ -246,20 +261,18 @@ export default function SenderPage() {
                     )
                 );
 
-                const timeout = Date.now() + 60000;
+                // Wait for acceptance (with timeout)
+                const timeout = Date.now() + 30000; // 30 seconds
                 while (!acceptedFiles.current.has(fileId)) {
                     if (Date.now() > timeout) {
-                        toast.error(`${item.file.name} was not accepted`);
-                        setFiles((prev) =>
-                            prev.map((f) =>
-                                f.id === item.id ? { ...f, status: "pending" } : f
-                            )
-                        );
-                        continue;
+                        throw new Error("File not accepted within timeout");
                     }
-                    await new Promise((r) => setTimeout(r, 200));
+                    await new Promise((r) => setTimeout(r, 100));
                 }
 
+                console.log(`✅ File accepted, sending: ${item.file.name}`);
+
+                // Send the file
                 await sendFile(
                     item.file,
                     fileId,
@@ -271,31 +284,39 @@ export default function SenderPage() {
                                 f.id === item.id ? { ...f, progress: p } : f
                             )
                         );
-                        currentBytes.current = (p / 100) * item.file.size;
+                        currentBytes.current += (p / 100) * item.file.size / 100;
                     }
                 );
 
-                await saveTransferState(fileId, item.file);
-
                 setFiles((prev) =>
                     prev.map((f) =>
-                        f.id === item.id ? { ...f, status: "done" } : f
+                        f.id === item.id ? { ...f, status: "done", progress: 100 } : f
                     )
                 );
+                
+                successCount++;
+                console.log(`✅ File sent successfully: ${item.file.name}`);
             } catch (error) {
-                console.error(`Error sending ${item.file.name}:`, error);
+                console.error(`❌ Error sending ${item.file.name}:`, error);
                 toast.error(`Failed to send ${item.file.name}`);
                 setFiles((prev) =>
                     prev.map((f) =>
-                        f.id === item.id ? { ...f, status: "paused" } : f
+                        f.id === item.id ? { ...f, status: "error" } : f
                     )
                 );
+                failCount++;
             }
         }
 
         setSending(false);
         setTransferSpeed(0);
-        toast.success("All files sent!");
+        
+        if (successCount > 0) {
+            toast.success(`✅ ${successCount} file(s) sent successfully!`);
+        }
+        if (failCount > 0) {
+            toast.error(`❌ ${failCount} file(s) failed to send`);
+        }
     };
 
     const overallProgress =
@@ -422,13 +443,15 @@ export default function SenderPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {files.map((item) => (
                         <div key={item.id} className="relative border border-gray-200 bg-white rounded-xl p-3 space-y-2">
-                            <button 
-                                onClick={() => removeFile(item.id)} 
-                                className="rounded-full bg-white p-1 absolute top-1 right-2 text-red-400 hover:text-red-500 cursor-pointer"
-                                disabled={sending}
-                            >
-                                <X size={20} />
-                            </button>
+                            {item.status !== "sending" && (
+                                <button 
+                                    onClick={() => removeFile(item.id)} 
+                                    className="rounded-full bg-white p-1 absolute top-1 right-2 text-red-400 hover:text-red-500 cursor-pointer"
+                                    disabled={sending}
+                                >
+                                    <X size={20} />
+                                </button>
+                            )}
 
                             <div className="h-20 bg-neutral-100 rounded-lg flex items-center justify-center overflow-hidden">
                                 {item.preview ? (
@@ -447,13 +470,21 @@ export default function SenderPage() {
                                 {(item.file.size / (1024 * 1024)).toFixed(2)} MB
                             </div>
 
-                            {item.status === "paused" && (
-                                <button 
-                                    className="text-xs text-blue-600"
-                                    onClick={() => resumeTransfer(item.id)}
-                                >
-                                    Resume
-                                </button>
+                            {item.status === "sending" && (
+                                <div className="w-full bg-neutral-200 rounded-full h-2">
+                                    <div 
+                                        className="bg-blue-500 h-2 rounded-full transition-all"
+                                        style={{ width: `${item.progress}%` }}
+                                    />
+                                </div>
+                            )}
+
+                            {item.status === "done" && (
+                                <p className="text-xs text-green-600 font-medium">✓ Sent</p>
+                            )}
+
+                            {item.status === "error" && (
+                                <p className="text-xs text-red-600 font-medium">✕ Failed</p>
                             )}
 
                             <button 
@@ -471,9 +502,9 @@ export default function SenderPage() {
                 <button
                     onClick={startSending}
                     disabled={!socket.ready || sending}
-                    className="w-full py-4 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="w-full py-4 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:bg-blue-700 transition"
                 >
-                    {sending ? `Sending… ${transferSpeed.toFixed(1)} MB/s` : `Start transfer (${files.length} files)`}
+                    {sending ? `Sending… ${overallProgress}%` : `Start transfer (${files.length} files)`}
                 </button>
             )}
 
