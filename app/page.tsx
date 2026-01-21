@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSocket } from "@/hooks/useSocket";
+import { useGlobalSocket } from "./providers/SocketProvider";
 import { Button } from "./components/Button";
 import { Container } from "./components/Container";
 import { Branding } from "./components/Branding";
@@ -14,7 +14,6 @@ import { ConnectingIndicator } from "./features/pairing/ConnectingIndicator";
 import ConnectedActionChooser from "./features/pairing/ConnectedActionChooser";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
-import { useFileReceiver } from "@/hooks/useFileReceiver";
 import { PWARegister } from "./components/PWARegister";
 
 type PairState = "idle" | "waiting" | "connecting" | "connected" | "disconnected";
@@ -32,18 +31,14 @@ export default function Home() {
     const connectingToastShown = useRef(false);
     const currentToastId = useRef<string | null>(null);
     
-    const socket = useSocket();
-    
-    const receiverRef = useRef<ReturnType<typeof useFileReceiver> | null>(null);
-    const receiver = useFileReceiver(socket.send);
-    receiverRef.current = receiver;
+    // Use global socket
+    const socket = useGlobalSocket();
     
     useEffect(() => {
         if (!socket.ready) return;
 
-        socket.setOnMessage((msg) => {
-            receiverRef.current?.handleMessage(msg);
-
+        // Register message handler (auto-cleanup on unmount)
+        const cleanup = socket.on((msg) => {
             switch (msg.type) {
                 case "room-created":
                     setRoomId(msg.roomId);
@@ -55,14 +50,11 @@ export default function Home() {
                     break;
                         
                 case "peer-joining":
-                    // FIX: Store peer name immediately
                     setPeerName(msg.peerName);
                     setPairState("connecting");
-                    
-                    // Send peer-ready immediately
                     socket.send({ type: "peer-ready" });
                     
-                    // Show connecting toast only once with peer name
+                    // Show connecting toast only once
                     if (!connectingToastShown.current) {
                         connectingToastShown.current = true;
                         currentToastId.current = toast.loading(`Connecting to ${msg.peerName}...`);
@@ -74,16 +66,19 @@ export default function Home() {
                     setPairState("connected");
                     setRoomToken(null);
                     
-                    // Store connection state in localStorage
+                    // Store connection state
                     localStorage.setItem("fluxsend_peer_name", msg.peerName);
                     localStorage.setItem("fluxsend_is_host", isHost.toString());
+                    localStorage.setItem("fluxsend_connected", "true");
                     
+                    // Dismiss connecting toast immediately
                     if (currentToastId.current) {
                         toast.dismiss(currentToastId.current);
                         currentToastId.current = null;
                     }
                     
-                    toast.success(`Connected to ${msg.peerName}`, { duration: 2000 });
+                    // Show success briefly then clear
+                    toast.success(`Connected to ${msg.peerName}`, { duration: 1500 });
                     connectingToastShown.current = false;
                     break;
                     
@@ -94,6 +89,7 @@ export default function Home() {
                     }
                     toast.error("Peer disconnected");
                     setPairState("disconnected");
+                    localStorage.removeItem("fluxsend_connected");
                     connectingToastShown.current = false;
                     break;
                         
@@ -109,10 +105,8 @@ export default function Home() {
             }
         });
 
-        return () => {
-            // Don't clear message handler - keep it active
-        };
-    }, [socket.ready, socket]);
+        return cleanup; // Cleanup on unmount
+    }, [socket.ready, isHost]);
 
     const resetPairingState = () => {
         setPairState("idle");
@@ -123,9 +117,9 @@ export default function Home() {
         setConnectedMode(null);
         connectingToastShown.current = false;
         
-        // Clear localStorage
         localStorage.removeItem("fluxsend_peer_name");
         localStorage.removeItem("fluxsend_is_host");
+        localStorage.removeItem("fluxsend_connected");
         
         if (currentToastId.current) {
             toast.dismiss(currentToastId.current);
@@ -164,43 +158,6 @@ export default function Home() {
             setIsModalOpen(true);
         }
     };
-
-    useEffect(() => {
-        if (!receiver.incomingOffers.length) return;
-
-        const offer = receiver.incomingOffers[0];
-
-        const toastId = toast(
-            <div className="flex flex-col gap-2">
-                <span className="font-semibold">{offer.name}</span>
-                <span className="text-xs text-neutral-500">
-                    {(offer.size / (1024 * 1024)).toFixed(2)} MB
-                </span>
-                <div className="flex gap-2 mt-2">
-                    <button
-                        onClick={() => {
-                            receiver.accept(offer.fileId);
-                            toast.dismiss(toastId);
-                            router.push("/receiver");
-                        }}
-                        className="flex-1 bg-blue-600 text-white rounded-xl py-1 text-xs"
-                    >
-                        Accept
-                    </button>
-                    <button
-                        onClick={() => {
-                            receiver.reject(offer.fileId);
-                            toast.dismiss(toastId);
-                        }}
-                        className="flex-1 border border-red-500 text-red-500 rounded-xl py-1 text-xs"
-                    >
-                        Reject
-                    </button>
-                </div>
-            </div>,
-            {duration: Infinity}
-        );
-    }, [receiver.incomingOffers, receiver, router]);
 
     useEffect(() => {
         if (!socket.ready && pairState === "connected") {

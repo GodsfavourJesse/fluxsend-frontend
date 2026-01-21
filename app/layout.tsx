@@ -1,7 +1,7 @@
 import "./globals.css";
 import { Poppins } from "next/font/google";
-import { ConnectionProvider } from "./providers/ConnectionProvider";
 import type { Metadata, Viewport } from "next";
+import { SocketProvider } from "./providers/SocketProvider";
 
 const poppins = Poppins({
     subsets: ["latin"],
@@ -145,7 +145,9 @@ export default function RootLayout({
                 />
             </head>
             <body className={`${poppins.variable} bg-[#F5F7FB] text-[#0B0F1A]`}>
-                <ConnectionProvider>{children}</ConnectionProvider>
+                <SocketProvider>
+                    {children}
+                </SocketProvider>
             </body>
         </html>
     );

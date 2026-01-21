@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { X, Eye, Upload, Camera, Folder, Clipboard, Type, Zap } from "lucide-react";
-import { useSocket } from "@/hooks/useSocket";
+import { useGlobalSocket } from "../providers/SocketProvider";
 import { sendFile } from "@/lib/sendFile";
 import { offerFile } from "@/lib/offerFile";
 import PreviewModal from "../features/modals/transfermodals/PreviewModal";
@@ -48,39 +48,50 @@ export default function SenderPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
 
-    const socket = useSocket((msg) => {
-        if (msg?.type === "file-accept") {
-            acceptedFiles.current.add(msg.fileId);
-        }
-        
-        // Handle graceful disconnect
-        if (msg?.type === "graceful-disconnect") {
-            toast.error(msg.message || "Peer left the room");
-            setTimeout(() => router.push("/"), 2000);
-        }
-        
-        // Handle peer disconnect
-        if (msg?.type === "peer-disconnected") {
-            toast.error("Peer disconnected");
-            setTimeout(() => router.push("/"), 2000);
-        }
+    // Use global socket
+    const socket = useGlobalSocket();
 
-        // Store connection info
-        if (msg?.type === "connection-established") {
-            setPeerName(msg.peerName);
-        }
-    });
-
-    // Get connection state from localStorage (set during pairing)
+    // Get connection state from localStorage
     useEffect(() => {
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
+        const isConnected = localStorage.getItem("fluxsend_connected") === "true";
         
         if (storedPeerName) setPeerName(storedPeerName);
         setIsHost(storedIsHost);
-    }, []);
 
-    // Transfer speed calculation
+        // Redirect if not connected
+        if (!isConnected) {
+            toast.error("Not connected. Please pair first.");
+            router.push("/");
+        }
+    }, [router]);
+
+    // Register message handler
+    useEffect(() => {
+        if (!socket.ready) return;
+
+        const cleanup = socket.on((msg) => {
+            if (msg?.type === "file-accept") {
+                acceptedFiles.current.add(msg.fileId);
+            }
+            
+            if (msg?.type === "graceful-disconnect") {
+                toast.error(msg.message || "Peer left the room");
+                localStorage.removeItem("fluxsend_connected");
+                setTimeout(() => router.push("/"), 2000);
+            }
+            
+            if (msg?.type === "peer-disconnected") {
+                toast.error("Peer disconnected");
+                localStorage.removeItem("fluxsend_connected");
+                setTimeout(() => router.push("/"), 2000);
+            }
+        });
+
+        return cleanup;
+    }, [socket.ready, router]);
+
     useEffect(() => {
         if (!sending) return;
 
@@ -492,7 +503,6 @@ export default function SenderPage() {
 
             {previewFile && <PreviewModal file={previewFile.file} onClose={() => setPreviewFile(null)} />}
 
-            {/* Disconnect Footer */}
             <DisconnectFooter 
                 isHost={isHost} 
                 peerName={peerName || undefined}
