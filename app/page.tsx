@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { PWARegister } from "./components/PWARegister";
 
-type PairState = "idle" | "waiting" | "connecting" | "connected" | "disconnected";
+type PairState = "idle" | "waiting" | "connecting" | "action-chooser" | "redirecting";
 
 export default function Home() {
     const router = useRouter();
@@ -26,13 +26,26 @@ export default function Home() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isHost, setIsHost] = useState(false);
     const [roomToken, setRoomToken] = useState<string | null>(null);
-    const [connectedMode, setConnectedMode] = useState<null | "send" | "receive">(null);
     const [connectingProgress, setConnectingProgress] = useState(0);
     
     const connectingToastId = useRef<string | null>(null);
     const connectingTimer = useRef<NodeJS.Timeout | null>(null);
+    const hasRedirected = useRef(false);
     
     const socket = useGlobalSocket();
+    
+    // Check if already connected on mount
+    useEffect(() => {
+        const isConnected = localStorage.getItem("fluxsend_connected") === "true";
+        const storedPeerName = localStorage.getItem("fluxsend_peer_name");
+        
+        if (isConnected && storedPeerName && !hasRedirected.current) {
+            // Already connected, show action chooser immediately
+            setPeerName(storedPeerName);
+            setIsHost(localStorage.getItem("fluxsend_is_host") === "true");
+            setPairState("action-chooser");
+        }
+    }, []);
     
     useEffect(() => {
         if (!socket.ready) return;
@@ -54,47 +67,44 @@ export default function Home() {
                     setPairState("connecting");
                     setConnectingProgress(0);
                     
-                    // Show connecting toast ONCE
                     if (!connectingToastId.current) {
                         connectingToastId.current = toast.loading(`Connecting to ${msg.peerName}...`, {
                             id: "connecting-toast"
                         });
                     }
 
-                    // Start progress animation
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                     }
                     
+                    // Faster animation: 100% in 2 seconds
+                    let currentProgress = 0;
                     connectingTimer.current = setInterval(() => {
-                        setConnectingProgress(prev => {
-                            if (prev >= 100) {
-                                if (connectingTimer.current) {
-                                    clearInterval(connectingTimer.current);
-                                }
-                                return 100;
+                        currentProgress += 5; // 5% every 100ms = 2 seconds total
+                        if (currentProgress >= 100) {
+                            currentProgress = 100;
+                            if (connectingTimer.current) {
+                                clearInterval(connectingTimer.current);
                             }
-                            return prev + 3.33; // Reach 100% in ~3 seconds
-                        });
+                        }
+                        setConnectingProgress(currentProgress);
                     }, 100);
                     break;
                             
                 case "connection-established":
-                    console.log("✅ Connection established with:", msg.peerName);
+                    console.log("Connection established with:", msg.peerName);
                     
-                    // Clear connecting timer
+                    // Clear timer and set to 100%
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                         connectingTimer.current = null;
                     }
-                    
-                    // Ensure progress reaches 100%
                     setConnectingProgress(100);
                     
                     setPeerName(msg.peerName);
                     setRoomToken(null);
                     
-                    // Dismiss connecting toast
+                    // Dismiss toast
                     if (connectingToastId.current) {
                         toast.dismiss(connectingToastId.current);
                         toast.dismiss("connecting-toast");
@@ -106,13 +116,17 @@ export default function Home() {
                     localStorage.setItem("fluxsend_is_host", isHost.toString());
                     localStorage.setItem("fluxsend_connected", "true");
                     
-                    // WAIT for animation to complete, then show action chooser
+                    // Show success toast
+                    toast.success(`Connected to ${msg.peerName}! 🎉`, { duration: 2000 });
+                    
+                    // Wait 300ms for smooth transition, then show action chooser
                     setTimeout(() => {
-                        setPairState("connected");
-                    }, 500);
+                        setPairState("action-chooser");
+                    }, 300);
                     break;
                     
                 case "peer-disconnected":
+                case "graceful-disconnect":
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                         connectingTimer.current = null;
@@ -122,9 +136,13 @@ export default function Home() {
                         toast.dismiss("connecting-toast");
                         connectingToastId.current = null;
                     }
-                    toast.error("Peer disconnected");
-                    setPairState("disconnected");
-                    localStorage.removeItem("fluxsend_connected");
+                    
+                    const disconnectMsg = msg.type === "graceful-disconnect" 
+                        ? msg.message || "Peer disconnected"
+                        : "Peer disconnected";
+                    
+                    toast.error(disconnectMsg);
+                    resetPairingState();
                     break;
                         
                 case "error":
@@ -152,8 +170,8 @@ export default function Home() {
         setPeerName(null);
         setIsHost(false);
         setRoomToken(null);
-        setConnectedMode(null);
         setConnectingProgress(0);
+        hasRedirected.current = false;
         
         if (connectingTimer.current) {
             clearInterval(connectingTimer.current);
@@ -203,34 +221,26 @@ export default function Home() {
             connectingToastId.current = null;
         }
         
+        resetPairingState();
         if (isHost) {
-            resetPairingState();
             createRoom();
         } else {
             setIsModalOpen(true);
         }
     };
 
-    useEffect(() => {
-        if (!socket.ready && pairState === "connected") {
-            const timeout = setTimeout(() => {
-                setPairState("disconnected");
-            }, 20000);
-
-            return () => clearTimeout(timeout);
-        }
-    }, [socket.ready, pairState]);
-
-    useEffect(() => {
-        if (connectedMode === "send") {
-            console.log("📤 Navigating to /share");
-            router.push("/share");
-        }
-        else if (connectedMode === "receive") {
-            console.log("📥 Navigating to /receiver");
-            router.push("/receiver");
-        }
-    }, [connectedMode, router]);
+    const handleModeSelection = (mode: "send" | "receive") => {
+        if (hasRedirected.current) return;
+        
+        hasRedirected.current = true;
+        setPairState("redirecting");
+        
+        const path = mode === "send" ? "/share" : "/receiver";
+        console.log(`Redirecting to ${path}`);
+        
+        // Immediate redirect
+        router.push(path);
+    };
 
     // Cleanup on unmount
     useEffect(() => {
@@ -374,27 +384,24 @@ export default function Home() {
                                 />
                             )}
 
-                            {pairState === "disconnected" && (
-                                <ConnectingIndicator 
-                                    peer={peerName || undefined}
-                                    progress={0}
-                                    disconnected={true}
-                                    onRetry={retryConnection}
-                                />
-                            )}
-
-                            {pairState === "connected" && peerName && !connectedMode && (
+                            {pairState === "action-chooser" && peerName && (
                                 <ConnectedActionChooser
                                     peer={peerName}
-                                    onSend={() => {
-                                        console.log("🚀 User chose to send");
-                                        setConnectedMode("send");
-                                    }}
-                                    onReceive={() => {
-                                        console.log("🚀 User chose to receive");
-                                        setConnectedMode("receive");
-                                    }}
+                                    onSend={() => handleModeSelection("send")}
+                                    onReceive={() => handleModeSelection("receive")}
                                 />
+                            )}
+                            
+                            {pairState === "redirecting" && (
+                                <motion.div
+                                    key="redirecting"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="flex flex-col items-center gap-4 py-8"
+                                >
+                                    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-sm text-neutral-600">Redirecting...</p>
+                                </motion.div>
                             )}
                         </AnimatePresence>
                     </motion.div>
@@ -410,7 +417,6 @@ export default function Home() {
                         return;
                     }
 
-                    // Show connecting toast
                     if (!connectingToastId.current) {
                         connectingToastId.current = toast.loading("Connecting...", {
                             id: "connecting-toast"
@@ -428,21 +434,20 @@ export default function Home() {
                     setConnectingProgress(0);
                     setIsModalOpen(false);
 
-                    // Start progress animation for joiner
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                     }
                     
+                    let currentProgress = 0;
                     connectingTimer.current = setInterval(() => {
-                        setConnectingProgress(prev => {
-                            if (prev >= 100) {
-                                if (connectingTimer.current) {
-                                    clearInterval(connectingTimer.current);
-                                }
-                                return 100;
+                        currentProgress += 5;
+                        if (currentProgress >= 100) {
+                            currentProgress = 100;
+                            if (connectingTimer.current) {
+                                clearInterval(connectingTimer.current);
                             }
-                            return prev + 3.33;
-                        });
+                        }
+                        setConnectingProgress(currentProgress);
                     }, 100);
                 }}
             />

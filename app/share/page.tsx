@@ -8,7 +8,7 @@ import { offerFile } from "@/lib/offerFile";
 import PreviewModal from "../features/modals/transfermodals/PreviewModal";
 import { Branding } from "../components/Branding";
 import TransferModal from "../features/modals/transfermodals/TransferModal";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import CameraModal from "../features/modals/transfermodals/CameraModal";
 import TextShareModal from "../features/modals/transfermodals/TextShareModal";
 import { DisconnectFooter } from "../components/DisconnectFooter";
@@ -40,64 +40,84 @@ export default function SenderPage() {
     const [transferSpeed, setTransferSpeed] = useState(0);
     const [peerName, setPeerName] = useState<string | null>(null);
     const [isHost, setIsHost] = useState(false);
+    const [isConnected, setIsConnected] = useState(false);
     
     const acceptedFiles = useRef<Set<string>>(new Set());
+    const rejectedFiles = useRef<Set<string>>(new Set());
     const lastBytes = useRef(0);
     const currentBytes = useRef(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
+    const hasCheckedConnection = useRef(false);
 
     const socket = useGlobalSocket();
 
+    // Connection guard - runs once on mount
     useEffect(() => {
+        if (hasCheckedConnection.current) return;
+        hasCheckedConnection.current = true;
+
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
-        const isConnected = localStorage.getItem("fluxsend_connected") === "true";
+        const connected = localStorage.getItem("fluxsend_connected") === "true";
         
-        if (storedPeerName) setPeerName(storedPeerName);
-        setIsHost(storedIsHost);
-
-        if (!isConnected) {
+        if (!connected || !storedPeerName) {
             toast.error("Not connected. Please pair first.");
-            router.push("/");
+            router.replace("/");
+            return;
         }
+
+        setPeerName(storedPeerName);
+        setIsHost(storedIsHost);
+        setIsConnected(true);
     }, [router]);
 
+    // Message handler
     useEffect(() => {
-        if (!socket.ready) return;
+        if (!socket.ready || !isConnected) return;
 
         const cleanup = socket.on((msg) => {
             if (msg?.type === "file-accept") {
-                console.log("✅ File accepted:", msg.fileId);
+                console.log("File accepted:", msg.fileId);
                 acceptedFiles.current.add(msg.fileId);
+                rejectedFiles.current.delete(msg.fileId);
             }
             
             if (msg?.type === "file-reject") {
-                console.log("❌ File rejected:", msg.fileId);
+                console.log("File rejected:", msg.fileId);
+                rejectedFiles.current.add(msg.fileId);
                 toast.error("File was declined by receiver");
+                
                 setFiles((prev) =>
-                    prev.map((f) =>
-                        f.id === msg.fileId ? { ...f, status: "error" } : f
-                    )
+                    prev.map((f) => {
+                        // Find by matching file offer
+                        const wasRejected = rejectedFiles.current.has(msg.fileId);
+                        if (wasRejected && f.status === "sending") {
+                            return { ...f, status: "error" };
+                        }
+                        return f;
+                    })
                 );
             }
             
-            if (msg?.type === "graceful-disconnect") {
-                toast.error(msg.message || "Peer left the room");
+            if (msg?.type === "graceful-disconnect" || msg?.type === "peer-disconnected") {
+                const disconnectMsg = msg.type === "graceful-disconnect" 
+                    ? msg.message || "Peer left the room"
+                    : "Peer disconnected";
+                    
+                toast.error(disconnectMsg);
                 localStorage.removeItem("fluxsend_connected");
-                setTimeout(() => router.push("/"), 2000);
-            }
-            
-            if (msg?.type === "peer-disconnected") {
-                toast.error("Peer disconnected");
-                localStorage.removeItem("fluxsend_connected");
-                setTimeout(() => router.push("/"), 2000);
+                localStorage.removeItem("fluxsend_peer_name");
+                localStorage.removeItem("fluxsend_is_host");
+                
+                setTimeout(() => router.replace("/"), 2000);
             }
         });
 
         return cleanup;
-    }, [socket.ready, router]);
+    }, [socket.ready, isConnected, router]);
 
+    // Transfer speed calculation
     useEffect(() => {
         if (!sending) return;
 
@@ -173,8 +193,7 @@ export default function SenderPage() {
 
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
-        const folderFiles = Array.from(e.target.files);
-        processFiles(folderFiles);
+        processFiles(Array.from(e.target.files));
         e.target.value = "";
     };
 
@@ -232,7 +251,7 @@ export default function SenderPage() {
     }, [files]);
 
     const startSending = async () => {
-        if (!socket.ready || sending) {
+        if (!socket.ready || sending || !isConnected) {
             toast.error("Not ready to send");
             return;
         }
@@ -242,6 +261,7 @@ export default function SenderPage() {
         currentBytes.current = 0;
         lastBytes.current = 0;
         acceptedFiles.current.clear();
+        rejectedFiles.current.clear();
 
         let successCount = 0;
         let failCount = 0;
@@ -252,7 +272,6 @@ export default function SenderPage() {
             try {
                 console.log(`📤 Offering file: ${item.file.name}`);
                 
-                // Offer the file
                 const fileId = offerFile(item.file, socket.send);
 
                 setFiles((prev) =>
@@ -261,18 +280,23 @@ export default function SenderPage() {
                     )
                 );
 
-                // Wait for acceptance (with timeout)
-                const timeout = Date.now() + 30000; // 30 seconds
-                while (!acceptedFiles.current.has(fileId)) {
-                    if (Date.now() > timeout) {
-                        throw new Error("File not accepted within timeout");
+                // Wait for accept/reject with timeout
+                const startTime = Date.now();
+                const timeout = 30000;
+                
+                while (!acceptedFiles.current.has(fileId) && !rejectedFiles.current.has(fileId)) {
+                    if (Date.now() - startTime > timeout) {
+                        throw new Error("File offer timeout");
                     }
                     await new Promise((r) => setTimeout(r, 100));
                 }
 
+                if (rejectedFiles.current.has(fileId)) {
+                    throw new Error("File rejected by receiver");
+                }
+
                 console.log(`✅ File accepted, sending: ${item.file.name}`);
 
-                // Send the file
                 await sendFile(
                     item.file,
                     fileId,
@@ -284,7 +308,9 @@ export default function SenderPage() {
                                 f.id === item.id ? { ...f, progress: p } : f
                             )
                         );
-                        currentBytes.current += (p / 100) * item.file.size / 100;
+                        
+                        const bytesNow = (p / 100) * item.file.size;
+                        currentBytes.current = bytesNow;
                     }
                 );
 
@@ -295,10 +321,12 @@ export default function SenderPage() {
                 );
                 
                 successCount++;
-                console.log(`✅ File sent successfully: ${item.file.name}`);
+                console.log(`✅ File sent: ${item.file.name}`);
+                
             } catch (error) {
                 console.error(`❌ Error sending ${item.file.name}:`, error);
-                toast.error(`Failed to send ${item.file.name}`);
+                toast.error(`Failed: ${item.file.name}`);
+                
                 setFiles((prev) =>
                     prev.map((f) =>
                         f.id === item.id ? { ...f, status: "error" } : f
@@ -312,10 +340,10 @@ export default function SenderPage() {
         setTransferSpeed(0);
         
         if (successCount > 0) {
-            toast.success(`✅ ${successCount} file(s) sent successfully!`);
+            toast.success(`✅ ${successCount} file(s) sent!`);
         }
         if (failCount > 0) {
-            toast.error(`❌ ${failCount} file(s) failed to send`);
+            toast.error(`❌ ${failCount} file(s) failed`);
         }
     };
 
@@ -324,6 +352,17 @@ export default function SenderPage() {
 
     const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
     const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+
+    if (!isConnected) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-neutral-600">Checking connection...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div 
@@ -446,7 +485,7 @@ export default function SenderPage() {
                             {item.status !== "sending" && (
                                 <button 
                                     onClick={() => removeFile(item.id)} 
-                                    className="rounded-full bg-white p-1 absolute top-1 right-2 text-red-400 hover:text-red-500 cursor-pointer"
+                                    className="rounded-full bg-white p-1 absolute top-1 right-2 text-red-400 hover:text-red-500 cursor-pointer z-10"
                                     disabled={sending}
                                 >
                                     <X size={20} />
@@ -514,7 +553,7 @@ export default function SenderPage() {
                     overallProgress={overallProgress}
                     sending={sending}
                     transferSpeed={transferSpeed}
-                    onClose={() => setShowTransferModal(false)}
+                    onClose={() => !sending && setShowTransferModal(false)}
                 />
             )}
 
@@ -538,6 +577,8 @@ export default function SenderPage() {
                 isHost={isHost} 
                 peerName={peerName || undefined}
             />
+
+            <Toaster position="top-center" />
         </div>
     );
 }

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useGlobalSocket } from "../providers/SocketProvider";
 import { useFileReceiver } from "@/hooks/useFileReceiver";
 import { Branding } from "../components/Branding";
-import { X, Download, CheckCircle, FileText, Image, Video, Music, File, Folder, Clock } from "lucide-react";
+import { Download, CheckCircle, FileText, Image, Video, Music, File, Folder, Clock } from "lucide-react";
 import { DisconnectFooter } from "../components/DisconnectFooter";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFileOfferNotifications } from "@/hooks/useFileOfferNotification";
@@ -157,60 +157,78 @@ export default function ReceiverPage() {
     const [showProgress, setShowProgress] = useState(false);
     const [peerName, setPeerName] = useState<string | null>(null);
     const [isHost, setIsHost] = useState(false);
+    const [isConnected, setIsConnected] = useState(false);
+    const hasCheckedConnection = useRef(false);
 
     useFileOfferNotifications(receiver.incomingOffers);
 
+    // Connection guard
     useEffect(() => {
+        if (hasCheckedConnection.current) return;
+        hasCheckedConnection.current = true;
+
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         const storedIsHost = localStorage.getItem("fluxsend_is_host") === "true";
-        const isConnected = localStorage.getItem("fluxsend_connected") === "true";
+        const connected = localStorage.getItem("fluxsend_connected") === "true";
         
-        if (storedPeerName) setPeerName(storedPeerName);
-        setIsHost(storedIsHost);
-
-        if (!isConnected) {
+        if (!connected || !storedPeerName) {
             toast.error("Not connected. Please pair first.");
-            router.push("/");
+            router.replace("/");
+            return;
         }
+
+        setPeerName(storedPeerName);
+        setIsHost(storedIsHost);
+        setIsConnected(true);
     }, [router]);
 
+    // Message handler
     useEffect(() => {
-        if (!socket.ready) return;
+        if (!socket.ready || !isConnected) return;
 
-        // Set sender function first
         receiver.setSender(socket.send);
 
-        // Register message handler
         const cleanup = socket.on((msg) => {
             console.log("📥 Receiver got message:", msg?.type || "binary");
             
-            // Pass message to receiver
             receiver.handleMessage(msg);
 
-            // Handle disconnection
-            if (msg?.type === "graceful-disconnect") {
-                toast.error(msg.message || "Peer left the room");
+            if (msg?.type === "graceful-disconnect" || msg?.type === "peer-disconnected") {
+                const disconnectMsg = msg.type === "graceful-disconnect" 
+                    ? msg.message || "Peer left the room"
+                    : "Peer disconnected";
+                    
+                toast.error(disconnectMsg);
                 localStorage.removeItem("fluxsend_connected");
-                setTimeout(() => router.push("/"), 2000);
-            }
-
-            if (msg?.type === "peer-disconnected") {
-                toast.error("Peer disconnected");
-                localStorage.removeItem("fluxsend_connected");
-                setTimeout(() => router.push("/"), 2000);
+                localStorage.removeItem("fluxsend_peer_name");
+                localStorage.removeItem("fluxsend_is_host");
+                
+                setTimeout(() => router.replace("/"), 2000);
             }
         });
 
         return cleanup;
-    }, [socket.ready, socket, receiver, router]);
+    }, [socket.ready, isConnected, socket, receiver, router]);
 
+    // Progress modal control
     useEffect(() => {
-        if (receiver.currentFile?.current && receiver.progress < 100) {
+        if (receiver.currentFile?.current && receiver.progress > 0 && receiver.progress < 100) {
             setShowProgress(true);
         } else {
             setShowProgress(false);
         }
     }, [receiver.progress, receiver.currentFile]);
+
+    if (!isConnected) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-neutral-600">Checking connection...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/30 to-purple-50/30 px-4 py-6 pb-32">
@@ -371,6 +389,8 @@ export default function ReceiverPage() {
                 isHost={isHost} 
                 peerName={peerName || undefined}
             />
+
+            <Toaster position="top-center" />
         </div>
     );
 }

@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { LogOut, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useSocket } from "@/hooks/useSocket";
+import { useGlobalSocket } from "../providers/SocketProvider";
 import toast from "react-hot-toast";
 
 type Props = {
@@ -14,16 +14,21 @@ type Props = {
 
 export function DisconnectFooter({ isHost, peerName, onDisconnect }: Props) {
     const router = useRouter();
-    const socket = useSocket();
+    const socket = useGlobalSocket();
 
     const handleDisconnect = () => {
         // Notify peer before disconnecting
         if (socket.ready) {
             socket.send({
                 type: "graceful-disconnect",
-                message: `${isHost ? "Host" : "Guest"} left the room`
+                message: `${peerName || "Peer"} left the room`
             });
         }
+
+        // Clear connection state
+        localStorage.removeItem("fluxsend_peer_name");
+        localStorage.removeItem("fluxsend_is_host");
+        localStorage.removeItem("fluxsend_connected");
 
         toast.success(isHost ? "Room closed" : "Left room");
         
@@ -33,7 +38,9 @@ export function DisconnectFooter({ isHost, peerName, onDisconnect }: Props) {
         }
 
         // Navigate back to home
-        router.push("/");
+        setTimeout(() => {
+            router.push("/");
+        }, 100);
     };
 
     return (
@@ -64,7 +71,7 @@ export function DisconnectFooter({ isHost, peerName, onDisconnect }: Props) {
 
                         <button
                             onClick={handleDisconnect}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-white text-red-600 rounded-xl font-semibold text-sm hover:bg-red-50 transition-colors shadow-md cursor-pointer"
+                            className="flex items-center gap-2 px-6 py-2.5 bg-white text-red-600 rounded-xl font-semibold text-sm hover:bg-red-50 transition-colors shadow-md cursor-pointer active:scale-95"
                         >
                             {isHost ? (
                                 <>
