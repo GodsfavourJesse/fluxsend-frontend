@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useGlobalSocket } from "@/app/providers/SocketProvider";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 export function useFileReceiver(sender?: (data: any) => void) {
@@ -7,20 +8,21 @@ export function useFileReceiver(sender?: (data: any) => void) {
     const currentFile = useRef<any | null>(null);
     const senderRef = useRef<((data: any) => void) | null>(null);
     const [progress, setProgress] = useState(0);
+    const socket = useGlobalSocket();
 
-    if (sender && !senderRef.current) {
-        senderRef.current = sender;
-    }
+    useEffect(() => {
+        if (sender) senderRef.current = sender;
+    }, [sender]);
 
     function setSender(fn: (data: any) => void) {
         senderRef.current = fn;
     }
 
-    function handleMessage(msg: any) {
+    const handleMessage = useCallback((msg: any) => {
         // Handle binary chunks (ArrayBuffer or wrapped binary message)
         if (msg instanceof ArrayBuffer || msg?.type === "file-chunk-raw") {
             if (!currentFile.current) {
-                console.warn("⚠️ Received chunk but no currentFile");
+                console.warn("Received chunk but no currentFile");
                 return;
             }
 
@@ -36,17 +38,17 @@ export function useFileReceiver(sender?: (data: any) => void) {
             setProgress(newProgress);
             
             if (newProgress % 20 === 0) {
-                console.log(`📥 Progress: ${newProgress}%`);
+                console.log(`Progress: ${newProgress}%`);
             }
             return;
         }
 
         // Handle JSON messages
-        console.log("📥 Receiver got message:", msg?.type || "unknown");
+        console.log("Receiver got message:", msg?.type || "unknown");
 
         switch (msg?.type) {
             case "file-offer":
-                console.log("📨 File offer received:", msg.file);
+                console.log("File offer received:", msg.file);
                 setIncomingOffers((prev) => {
                     // Prevent duplicates
                     if (prev.find(f => f.fileId === msg.file.fileId)) {
@@ -57,7 +59,7 @@ export function useFileReceiver(sender?: (data: any) => void) {
                 break;
 
             case "file-meta":
-                console.log("📋 File meta received:", msg.name);
+                console.log("File meta received:", msg.name);
                 currentFile.current = {
                     fileId: msg.fileId,
                     name: msg.name,
@@ -72,11 +74,11 @@ export function useFileReceiver(sender?: (data: any) => void) {
 
             case "file-complete":
                 if (!currentFile.current) {
-                    console.warn("⚠️ File complete but no currentFile");
+                    console.warn("File complete but no currentFile");
                     return;
                 }
                 
-                console.log("✅ File complete:", currentFile.current.name);
+                console.log("File complete:", currentFile.current.name);
                 
                 // Dismiss loading toast
                 toast.dismiss(`recv-${currentFile.current.fileId}`);
@@ -97,14 +99,14 @@ export function useFileReceiver(sender?: (data: any) => void) {
                     }
                 ]);
 
-                toast.success(`✅ ${currentFile.current.name} received!`);
+                toast.success(`${currentFile.current.name} received!`);
                 
                 currentFile.current = null;
                 setProgress(100);
                 break;
 
             case "clipboard-share":
-                console.log("📋 Clipboard received");
+                console.log("Clipboard received");
                 navigator.clipboard.writeText(msg.text).then(() => {
                     toast.success("Clipboard content received!");
                 }).catch(() => {
@@ -113,7 +115,7 @@ export function useFileReceiver(sender?: (data: any) => void) {
                 break;
 
             case "text-share":
-                console.log("📝 Text received");
+                console.log("Text received");
                 // Create a downloadable text file
                 const textBlob = new Blob([msg.text], { type: "text/plain" });
                 const textUrl = URL.createObjectURL(textBlob);
@@ -127,12 +129,20 @@ export function useFileReceiver(sender?: (data: any) => void) {
                 toast.success("Text received!");
                 break;
         }
-    }
+    }, []);
+
+
+
+    useEffect(() => {
+        return socket.on(handleMessage); //receieves binary + JSON
+    }, [socket, handleMessage]);
+
+
 
     function accept(fileId: string) {
-        console.log("✅ Accepting file:", fileId);
+        console.log("Accepting file:", fileId);
         if (!senderRef.current) {
-            console.error("❌ No sender function available");
+            console.error("No sender function available");
             toast.error("Cannot accept file: not connected");
             return;
         }
@@ -143,9 +153,9 @@ export function useFileReceiver(sender?: (data: any) => void) {
     }
 
     function reject(fileId: string) {
-        console.log("❌ Rejecting file:", fileId);
+        console.log("Rejecting file:", fileId);
         if (!senderRef.current) {
-            console.error("❌ No sender function available");
+            console.error("No sender function available");
             return;
         }
         
@@ -155,7 +165,7 @@ export function useFileReceiver(sender?: (data: any) => void) {
     }
 
     function download(file: any) {
-        console.log("💾 Downloading file:", file.name);
+        console.log("Downloading file:", file.name);
         
         const url = URL.createObjectURL(file.blob);
         const a = document.createElement("a");

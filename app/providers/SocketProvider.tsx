@@ -5,12 +5,16 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 type MessageHandler = (data: any) => void;
 
 type SocketContextType = {
-    socket: WebSocket | null;
     ready: boolean;
     send: (data: any) => void;
     sendBinary: (buf: ArrayBuffer) => void;
-    on: (handler: MessageHandler) => () => void; // Returns cleanup function
+    on: (handler: MessageHandler, type?: string) => () => void; // Returns cleanup function
     reconnect: () => void;
+};
+
+type TypedHandler = {
+    handler: MessageHandler;
+    type?: string;
 };
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -24,7 +28,7 @@ export function useGlobalSocket() {
 export function SocketProvider({ children }: { children: ReactNode }) {
     const [ready, setReady] = useState(false);
     const socketRef = useRef<WebSocket | null>(null);
-    const handlersRef = useRef<Set<MessageHandler>>(new Set());
+    const handlersRef = useRef<Set<TypedHandler>>(new Set());
     const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
     const reconnectAttempts = useRef(0);
     const shouldReconnect = useRef(true);
@@ -82,14 +86,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
                 }
 
                 // Broadcast to ALL registered handlers
-                handlersRef.current.forEach((handler) => {
-                    try {
+                handlersRef.current.forEach(({ handler, type }) => {
+                    if (!type || data?.type === type) {
                         handler(data);
-                    } catch (err) {
-                        console.error("Handler error:", err);
                     }
                 });
-            };
+            }
 
             ws.onclose = (event) => {
                 setReady(false);
@@ -158,12 +160,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
 
     // Register message handler (returns cleanup function)
-    const on = (handler: MessageHandler) => {
-        handlersRef.current.add(handler);
+    const on = (handler: MessageHandler, type?: string) => {
+        const entry = { handler, type };
+        handlersRef.current.add(entry);
         
         // Return cleanup function
         return () => {
-            handlersRef.current.delete(handler);
+            handlersRef.current.delete(entry);
         };
     };
 
@@ -175,7 +178,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     return (
         <SocketContext.Provider
             value={{
-                socket: socketRef.current,
                 ready,
                 send,
                 sendBinary,
