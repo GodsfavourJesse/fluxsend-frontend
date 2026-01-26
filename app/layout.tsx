@@ -20,12 +20,18 @@ export const viewport: Viewport = {
 
 // Enhanced Metadata with PWA support
 export const metadata: Metadata = {
+    metadataBase: new URL("https://fluxsend.vercel.app"),
     title: "FluxSend | Secure Peer-to-Peer File Sharing",
     description: "Send files instantly across devices with FluxSend. No accounts, no setup, fully peer-to-peer and secure. Share images, videos, documents, and more.",
     keywords: ["file sharing", "peer-to-peer", "secure transfer", "FluxSend", "instant files", "P2P", "file transfer", "cross-platform"],
     authors: [{ name: "Godsfavour Jesse" }],
     creator: "Godsfavour Jesse",
     publisher: "FluxSend",
+
+    // Verification
+    verification: {
+        google: "GOOGLE_SITE_VERIFICATION_CODE",
+    },
     
     // PWA Manifest
     manifest: "/manifest.json",
@@ -94,7 +100,13 @@ export const metadata: Metadata = {
     // Alternate languages
     alternates: {
         canonical: "https://fluxsend.vercel.app",
+        languages: {
+            "en": "https://fluxsend.vercel.app/",
+        },
     },
+
+    category: "Technology",
+    classification: "File Sharing Software",
 };
 
 export default function RootLayout({
@@ -118,11 +130,11 @@ export default function RootLayout({
                     dangerouslySetInnerHTML={{
                         __html: JSON.stringify({
                             "@context": "https://schema.org",
-                            "@type": "WebApplication",
+                            "@type": "SoftwareApplication",
                             "name": "FluxSend",
                             "url": "https://fluxsend.vercel.app",
                             "description": "Secure peer-to-peer file sharing application. Send files instantly across devices with no accounts or setup required.",
-                            "applicationCategory": "UtilityApplication",
+                            "applicationCategory": "FileSharingApplication",
                             "operatingSystem": "Web Browser",
                             "offers": {
                                 "@type": "Offer",

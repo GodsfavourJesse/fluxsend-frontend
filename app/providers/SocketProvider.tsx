@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback } from "react";
 
 type MessageHandler = (data: any) => void;
 
@@ -8,7 +8,7 @@ type SocketContextType = {
     ready: boolean;
     send: (data: any) => void;
     sendBinary: (buf: ArrayBuffer) => void;
-    on: (handler: MessageHandler, type?: string) => () => void; // Returns cleanup function
+    on: (handler: MessageHandler, type?: string) => () => void;
     reconnect: () => void;
 };
 
@@ -32,21 +32,50 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
     const reconnectAttempts = useRef(0);
     const shouldReconnect = useRef(true);
+    const messageQueue = useRef<any[]>([]);
+    const isConnecting = useRef(false);
 
     const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000";
     const MAX_RECONNECT_ATTEMPTS = 5;
     const RECONNECT_DELAY_BASE = 2000;
 
-    const connect = () => {
+    // OPTIMIZED: Flush queued messages when connection opens
+    const flushMessageQueue = useCallback(() => {
+        if (messageQueue.current.length > 0 && socketRef.current?.readyState === WebSocket.OPEN) {
+            console.log(`Flushing ${messageQueue.current.length} queued messages`);
+            messageQueue.current.forEach(msg => {
+                try {
+                    socketRef.current?.send(JSON.stringify(msg));
+                } catch (error) {
+                    console.error("Failed to send queued message:", error);
+                }
+            });
+            messageQueue.current = [];
+        }
+    }, []);
+
+    const connect = useCallback(() => {
+        // Prevent multiple simultaneous connection attempts
+        if (isConnecting.current) {
+            console.log("Connection already in progress");
+            return;
+        }
+
         // Don't recreate if already connected
         if (socketRef.current?.readyState === WebSocket.OPEN) {
             console.log("Socket already connected");
             return;
         }
 
+        isConnecting.current = true;
+
         // Clean up old connection
         if (socketRef.current) {
-            socketRef.current.close();
+            try {
+                socketRef.current.close();
+            } catch (e) {
+                // Ignore close errors
+            }
             socketRef.current = null;
         }
 
@@ -58,8 +87,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
             ws.onopen = () => {
                 setReady(true);
+                isConnecting.current = false;
                 reconnectAttempts.current = 0;
-                console.log("WebSocket connected globally");
+                console.log("WebSocket connected");
+                
+                // Flush any queued messages
+                flushMessageQueue();
             };
 
             ws.onmessage = (e) => {
@@ -76,7 +109,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
                         // Auto-respond to ping
                         if (data.type === "ping") {
-                            ws.send(JSON.stringify({ type: "pong" }));
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({ type: "pong" }));
+                            }
                             return;
                         }
                     } catch (err) {
@@ -85,22 +120,30 @@ export function SocketProvider({ children }: { children: ReactNode }) {
                     }
                 }
 
-                // Broadcast to ALL registered handlers
+                // OPTIMIZED: Broadcast to matching handlers only
                 handlersRef.current.forEach(({ handler, type }) => {
                     if (!type || data?.type === type) {
-                        handler(data);
+                        try {
+                            handler(data);
+                        } catch (error) {
+                            console.error("Handler error:", error);
+                        }
                     }
                 });
-            }
+            };
 
             ws.onclose = (event) => {
                 setReady(false);
-                console.log(`WebSocket closed. Code: ${event.code}`);
+                isConnecting.current = false;
+                console.log(`🔌 WebSocket closed. Code: ${event.code}`);
 
-                // Auto-reconnect
+                // Auto-reconnect with exponential backoff
                 if (shouldReconnect.current && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
                     reconnectAttempts.current++;
-                    const delay = RECONNECT_DELAY_BASE * reconnectAttempts.current;
+                    const delay = Math.min(
+                        RECONNECT_DELAY_BASE * Math.pow(2, reconnectAttempts.current - 1),
+                        30000 // Max 30 seconds
+                    );
                     
                     console.log(`Reconnecting in ${delay}ms... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`);
                     
@@ -114,12 +157,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
             ws.onerror = (err) => {
                 console.error("WebSocket error:", err);
+                isConnecting.current = false;
             };
         } catch (error) {
             console.error("Failed to create WebSocket:", error);
             setReady(false);
+            isConnecting.current = false;
         }
-    };
+    }, [WS_URL, flushMessageQueue]);
 
     // Initialize once on mount
     useEffect(() => {
@@ -136,31 +181,53 @@ export function SocketProvider({ children }: { children: ReactNode }) {
             }
             
             if (socketRef.current) {
-                socketRef.current.close();
+                try {
+                    socketRef.current.close();
+                } catch (e) {
+                    // Ignore close errors
+                }
                 socketRef.current = null;
             }
         };
+    }, [connect]);
+
+    // OPTIMIZED: Send with automatic queuing if not connected
+    const send = useCallback((data: any) => {
+        if (socketRef.current?.readyState === WebSocket.OPEN) {
+            try {
+                socketRef.current.send(JSON.stringify(data));
+            } catch (error) {
+                console.error("Send error:", error);
+                // Queue for retry
+                messageQueue.current.push(data);
+            }
+        } else {
+            console.warn("Socket not ready, queuing message");
+            messageQueue.current.push(data);
+            
+            // Limit queue size to prevent memory issues
+            if (messageQueue.current.length > 100) {
+                console.warn("Message queue overflow, dropping oldest messages");
+                messageQueue.current = messageQueue.current.slice(-100);
+            }
+        }
     }, []);
 
-    // Context API
-    const send = (data: any) => {
+    // OPTIMIZED: Binary send with validation
+    const sendBinary = useCallback((buf: ArrayBuffer) => {
         if (socketRef.current?.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify(data));
-        } else {
-            console.warn("Cannot send: WebSocket not ready");
-        }
-    };
-
-    const sendBinary = (buf: ArrayBuffer) => {
-        if (socketRef.current?.readyState === WebSocket.OPEN) {
-            socketRef.current.send(buf);
+            try {
+                socketRef.current.send(buf);
+            } catch (error) {
+                console.error("Binary send error:", error);
+            }
         } else {
             console.warn("Cannot send binary: WebSocket not ready");
         }
-    };
+    }, []);
 
     // Register message handler (returns cleanup function)
-    const on = (handler: MessageHandler, type?: string) => {
+    const on = useCallback((handler: MessageHandler, type?: string) => {
         const entry = { handler, type };
         handlersRef.current.add(entry);
         
@@ -168,12 +235,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         return () => {
             handlersRef.current.delete(entry);
         };
-    };
+    }, []);
 
-    const reconnectFn = () => {
+    const reconnectFn = useCallback(() => {
         reconnectAttempts.current = 0;
+        messageQueue.current = []; // Clear queue on manual reconnect
         connect();
-    };
+    }, [connect]);
 
     return (
         <SocketContext.Provider

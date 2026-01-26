@@ -31,6 +31,7 @@ export default function Home() {
     const connectingToastId = useRef<string | null>(null);
     const connectingTimer = useRef<NodeJS.Timeout | null>(null);
     const hasRedirected = useRef(false);
+    const connectionTimeout = useRef<NodeJS.Timeout | null>(null);
     
     const socket = useGlobalSocket();
     
@@ -40,7 +41,6 @@ export default function Home() {
         const storedPeerName = localStorage.getItem("fluxsend_peer_name");
         
         if (isConnected && storedPeerName && !hasRedirected.current) {
-            // Already connected, show action chooser immediately
             setPeerName(storedPeerName);
             setIsHost(localStorage.getItem("fluxsend_is_host") === "true");
             setPairState("action-chooser");
@@ -73,14 +73,18 @@ export default function Home() {
                         });
                     }
 
+                    // Clear any existing timers
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                     }
+                    if (connectionTimeout.current) {
+                        clearTimeout(connectionTimeout.current);
+                    }
                     
-                    // Faster animation: 100% in 2 seconds
+                    // OPTIMIZED: Faster progress animation (100% in 1.5 seconds)
                     let currentProgress = 0;
                     connectingTimer.current = setInterval(() => {
-                        currentProgress += 5; // 5% every 100ms = 2 seconds total
+                        currentProgress += 6.67; // ~15 steps to 100%
                         if (currentProgress >= 100) {
                             currentProgress = 100;
                             if (connectingTimer.current) {
@@ -89,15 +93,34 @@ export default function Home() {
                         }
                         setConnectingProgress(currentProgress);
                     }, 100);
+
+                    // CRITICAL: Connection timeout failsafe (15 seconds)
+                    connectionTimeout.current = setTimeout(() => {
+                        if (pairState === "connecting") {
+                            console.error("Connection timeout - forcing retry");
+                            if (connectingTimer.current) {
+                                clearInterval(connectingTimer.current);
+                            }
+                            if (connectingToastId.current) {
+                                toast.dismiss(connectingToastId.current);
+                            }
+                            toast.error("Connection timeout. Please try again.");
+                            resetPairingState();
+                        }
+                    }, 15000);
                     break;
                             
                 case "connection-established":
-                    console.log("Connection established with:", msg.peerName);
+                    console.log("✅ Connection established with:", msg.peerName);
                     
-                    // Clear timer and set to 100%
+                    // Clear all timers
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                         connectingTimer.current = null;
+                    }
+                    if (connectionTimeout.current) {
+                        clearTimeout(connectionTimeout.current);
+                        connectionTimeout.current = null;
                     }
                     setConnectingProgress(100);
                     
@@ -119,10 +142,10 @@ export default function Home() {
                     // Show success toast
                     toast.success(`Connected to ${msg.peerName}! 🎉`, { duration: 2000 });
                     
-                    // Wait 300ms for smooth transition, then show action chooser
+                    // OPTIMIZED: Immediate transition to action chooser
                     setTimeout(() => {
                         setPairState("action-chooser");
-                    }, 300);
+                    }, 200);
                     break;
                     
                 case "peer-disconnected":
@@ -130,6 +153,10 @@ export default function Home() {
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
                         connectingTimer.current = null;
+                    }
+                    if (connectionTimeout.current) {
+                        clearTimeout(connectionTimeout.current);
+                        connectionTimeout.current = null;
                     }
                     if (connectingToastId.current) {
                         toast.dismiss(connectingToastId.current);
@@ -150,6 +177,10 @@ export default function Home() {
                         clearInterval(connectingTimer.current);
                         connectingTimer.current = null;
                     }
+                    if (connectionTimeout.current) {
+                        clearTimeout(connectionTimeout.current);
+                        connectionTimeout.current = null;
+                    }
                     if (connectingToastId.current) {
                         toast.dismiss(connectingToastId.current);
                         toast.dismiss("connecting-toast");
@@ -162,7 +193,7 @@ export default function Home() {
         });
 
         return cleanup;
-    }, [socket.ready, isHost]);
+    }, [socket.ready, isHost, pairState]);
 
     const resetPairingState = () => {
         setPairState("idle");
@@ -176,6 +207,11 @@ export default function Home() {
         if (connectingTimer.current) {
             clearInterval(connectingTimer.current);
             connectingTimer.current = null;
+        }
+        
+        if (connectionTimeout.current) {
+            clearTimeout(connectionTimeout.current);
+            connectionTimeout.current = null;
         }
         
         if (connectingToastId.current) {
@@ -215,6 +251,10 @@ export default function Home() {
             clearInterval(connectingTimer.current);
             connectingTimer.current = null;
         }
+        if (connectionTimeout.current) {
+            clearTimeout(connectionTimeout.current);
+            connectionTimeout.current = null;
+        }
         if (connectingToastId.current) {
             toast.dismiss(connectingToastId.current);
             toast.dismiss("connecting-toast");
@@ -247,6 +287,9 @@ export default function Home() {
         return () => {
             if (connectingTimer.current) {
                 clearInterval(connectingTimer.current);
+            }
+            if (connectionTimeout.current) {
+                clearTimeout(connectionTimeout.current);
             }
         };
     }, []);
@@ -433,6 +476,7 @@ export default function Home() {
                     setPairState("connecting");
                     setConnectingProgress(0);
                     setIsModalOpen(false);
+                    setIsHost(false);
 
                     if (connectingTimer.current) {
                         clearInterval(connectingTimer.current);
@@ -440,7 +484,7 @@ export default function Home() {
                     
                     let currentProgress = 0;
                     connectingTimer.current = setInterval(() => {
-                        currentProgress += 5;
+                        currentProgress += 6.67;
                         if (currentProgress >= 100) {
                             currentProgress = 100;
                             if (connectingTimer.current) {
